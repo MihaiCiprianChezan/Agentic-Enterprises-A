@@ -10,7 +10,7 @@ Companion to: Agentic-First-Enterprises.md · One-Cell-Build-Plan.md · Cell-Con
 
 This document instantiates milestone **M2** of the build plan: the explicit interface for each role the cell binds to. The system depends on these contracts, never on whether an agent or a human implements them (invariant #1). Each contract uses the model's standard shape (§2): responsibility, inputs, outputs, authority scope, acceptance criteria, escalation rule, observability hooks.
 
-These are written **generically**, matching the constitution. The `«placeholders»` are the only workflow-specific parts. Five contracts: four operating roles (Director, Orchestrator, Executor, Verifier) and one system role (Steward). The Optimizer and Auditor are deferred (Constitution Art. 3.4) and not contracted here.
+These are written **generically**, matching the constitution. The `«placeholders»` are the only workflow-specific parts. Six contracts: four operating roles (Director, Orchestrator, Executor, Verifier) and two system roles (Steward, and the Optimizer — instantiated at M8 now its precondition holds). The Auditor remains deferred (Constitution Art. 3.4) and is not contracted here.
 
 All five share these **invariants** (do not repeat them per role):
 
@@ -88,6 +88,20 @@ The data objects passed between roles:
 | **Acceptance criteria** | A drift/loop/cost-spiral condition is detected and the flow is quarantined before it breaches the budget cap or causes harm (build plan M7); rollback restores a known-good checkpoint without losing the decision trail; no Steward action altered a business decision or a work product. |
 | **Escalation rule** | Escalates to a human when: a quarantined flow cannot be safely restored from a checkpoint; drift recurs after rollback; or the condition is outside its technical remit (e.g. it looks like purpose drift, which is the Board's domain, not the Steward's). |
 | **Observability hooks** | Emits: every health signal it acted on, each quarantine/rollback with the triggering condition and the checkpoint restored, and every human flag — to its own trail, distinct from the operating roles' trails. |
+
+## Contract 6 — Optimizer *(system role — no business authority)*
+
+Instantiated at **M8** now its precondition holds (cost is attributed and there is capability/cost spread across implementers; Constitution Art. 3.4). Sibling to the Steward: the Steward optimizes for reliability, the Optimizer for efficiency/capability-fit.
+
+| Field | Specification |
+|---|---|
+| **Responsibility** | Owns *which implementer does each task*. Matches a Work item to the **minimum-capability implementer that still clears the task's risk/quality floor**, minimizing cost only *beneath* that floor. **Selection only** — capability-to-task matching, no business/priority decision (model §10/§4.6). |
+| **Inputs** | The Work item and its `action_class`; the candidate implementers (capability tier + cost); the **attributed cost** per implementer from the Observability plane (nominal fallback at cold-start). |
+| **Outputs** | A routing decision → the chosen implementer, recorded as an auditable `route` event (chosen id, the floor, the costs compared). The Orchestrator's assignment carries it to the worker. |
+| **Authority scope** | **Zero business authority.** May only minimize cost *beneath* a floor it **does not set**: the risk→capability floor is **constitutional input** (`CAPABILITY_FLOOR`, governance registry), never an Optimizer judgment — a role that both classified risk and optimized against it could lower the floor to save cost. May **not** route a task below its floor, change priorities, or make strategy. |
+| **Acceptance criteria** | The chosen implementer clears the task's capability floor; among those, cost is minimized using attributed cost; nothing clears the floor → escalates (never routes below). The decision is auditable and reused on resume/retry. |
+| **Escalation rule** | No candidate clears the floor (`NoCapableImplementer`) → escalate to a human; the Optimizer never relaxes the floor to proceed. |
+| **Placement (YAGNI)** | Inserted only where the cost/capability spread pays for the routing — engaged with ≥2 candidates; a uniform pipeline gets no router (model §10). |
 
 ---
 

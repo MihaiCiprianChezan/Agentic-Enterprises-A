@@ -73,6 +73,26 @@ from cell.effects.wrapper import SqliteEffectsLedger
 cell = Cell.assemble(store=DurableEventStore("run.db"), ledger=SqliteEffectsLedger("run.db"))
 ```
 
+### Routing implementers (the Optimizer, M8)
+
+Wire an `optimizer` plus two or more `Implementer`s and the cell routes each work item to the
+**cheapest implementer that clears the task's constitutional capability floor** (it may minimize
+cost only *beneath* the floor — a high-blast task never goes to a weak worker). Cost is the
+attributed cost from past runs, with a nominal fallback. The choice is a recorded, auditable `route`
+event and is reused on resume/retry; `cell.observe` shows it as `route → <implementer> (floor N)`.
+
+```python
+from cell.optimize import CostAwareOptimizer, Implementer
+
+cell = Cell.assemble(
+    optimizer=CostAwareOptimizer(),
+    implementers=[Implementer("light", capability_tier=1, executor=light_exec, nominal_cost=1.0),
+                  Implementer("strong", capability_tier=3, executor=strong_exec, nominal_cost=20.0)])
+```
+
+With fewer than two implementers (or no optimizer) the cell runs exactly as before — a uniform
+pipeline gets no router.
+
 ## 4. Run the live slice (a real agent → a real PR)
 
 A real CLI coding agent fills the Executor seat and opens an actual pull request. This performs

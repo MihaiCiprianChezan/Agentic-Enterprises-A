@@ -34,7 +34,8 @@ from cell.effects.wrapper import (
     perform,
 )
 from cell.flow import NonIndependentVerification, _actor_of
-from cell.planes.governance import PermissiveGovernance, level_for
+from cell.optimize import OPTIMIZER_ACTOR, mean_cost_for
+from cell.planes.governance import PermissiveGovernance, capability_floor, level_for
 from cell.planes.memory import Checkpoint, CostDelta, EventStore
 from cell.planes.observability import TraceStore, Tracer, total_cost
 from cell.roles.contracts import Director, Executor, Orchestrator, Verifier
@@ -101,7 +102,8 @@ class CellHandbrake:
                  ledger: Optional[EffectsLedger] = None,
                  governance: Optional[GovernanceCheck] = None,
                  recorder: Optional[TraceStore] = None, cost_model=None,
-                 max_revisions: int = 2, clock=None) -> None:
+                 max_revisions: int = 2, clock=None,
+                 optimizer=None, implementers=None) -> None:
         self.director = director
         self.orchestrator = orchestrator
         self.executor = executor
@@ -113,6 +115,8 @@ class CellHandbrake:
         self.cost_model = cost_model
         self.max_revisions = max_revisions
         self.clock = clock
+        self.optimizer = optimizer
+        self.implementers = implementers or []
 
     # -- primitives -----------------------------------------------------------
 
@@ -231,7 +235,8 @@ class CellHandbrake:
         self.store.append(flow_id, "decision", _actor_of(self.orchestrator, "Orchestrator"),
                           {"stage": "resume", "index": index})
         item = items[index]
-        verdict = self._do_item(flow_id, item, goal, self._latest_injection(flow_id, item.id))
+        executor, impl_id = self._assign(flow_id, item)
+        verdict = self._do_item(flow_id, item, goal, self._latest_injection(flow_id, item.id), executor, impl_id)
         if verdict.decision != "pass" or index + 1 >= len(items):
             return verdict
         return self._advance(flow_id, ticket, goal, items, index + 1)
@@ -254,10 +259,11 @@ class CellHandbrake:
         verdict: Optional[Verdict] = None
         while index < len(items):
             item = items[index]
+            executor, impl_id = self._assign(flow_id, item)  # Optimizer routes the implementer (or self.executor)
             self._govern(flow_id, item)  # R6 gate at the action site (logs allow/block)
             if level_for(item.action_class) in ("L0", "L1") or self._adhoc_hit(flow_id, item):
                 return self._pause(flow_id, ticket, index, item)
-            verdict = self._do_item(flow_id, item, goal, None)
+            verdict = self._do_item(flow_id, item, goal, None, executor, impl_id)
             if verdict.decision != "pass":
                 return verdict
             index += 1
@@ -280,7 +286,33 @@ class CellHandbrake:
         return Paused(flow_id=flow_id, step=f"pre-execute:{item.id}", reason=reason,
                       pending_action=pending)
 
-    def _do_item(self, flow_id, item, goal, injection) -> Verdict:
+    def _assign(self, flow_id, item):
+        """Route the work item to an implementer (model §10). The Optimizer picks the cheapest
+        candidate that clears the constitutional floor; the choice is recorded as a `route` decision
+        (auditable) and reused on resume/retry. Routing engages only with an optimizer and ≥2
+        candidates — a uniform pipeline gets no router, so `self.executor` is used unchanged."""
+        if self.optimizer is None or len(self.implementers) < 2:
+            return self.executor, None
+        by_id = {im.id: im for im in self.implementers}
+        prior = next((e for e in self.store.read(flow_id)
+                      if e.payload.get("stage") == "route" and e.payload.get("work_item_id") == item.id),
+                     None)
+        if prior is not None:
+            chosen = by_id.get(prior.payload["chosen"])   # resume/retry: reuse the recorded choice
+            if chosen is not None:
+                return chosen.executor, chosen.id
+            return self.executor, None   # recorded implementer is gone (re-assembled) — degrade, don't crash
+        history = self.store.all_events()
+        costs = {im.id: c for im in self.implementers
+                 if (c := mean_cost_for(history, im.id)) is not None}
+        chosen = self.optimizer.select(item, self.implementers, costs)
+        self.store.append(flow_id, "decision", OPTIMIZER_ACTOR,
+                          {"stage": "route", "work_item_id": item.id, "chosen": chosen.id,
+                           "floor": capability_floor(item.action_class),
+                           "costs": {im.id: costs.get(im.id, im.nominal_cost) for im in self.implementers}})
+        return chosen.executor, chosen.id
+
+    def _do_item(self, flow_id, item, goal, injection, executor, implementer_id=None) -> Verdict:
         existing = self._existing_verdict(flow_id, item)
         if existing is not None:
             return existing  # idempotent resume: already executed and verified, do not re-run
@@ -305,18 +337,21 @@ class CellHandbrake:
                                     artifact_ref=v["artifact_ref"], produced_by=injection["actor"],
                                     trace_ref="trace://injected", produced_at=_now())
                 else:
-                    with tracer.span("execute", _actor_of(self.executor, "Executor"), "tool_call") as h:
-                        output = self.executor.execute(item)
+                    with tracer.span("execute", _actor_of(executor, "Executor"), "tool_call") as h:
+                        output = executor.execute(item)
                         h.cost = output.cost  # the runtime's reported token cost (None if not reported)
                     exec_cost = h.cost        # tokens + the span's measured wall-clock
 
                 # Record the "executed" marker BEFORE the effect and the verdict, so a crash
-                # after the change is committed but before the verdict is recoverable.
-                self.store.append(flow_id, "action", output.produced_by,
-                                  {"stage": "execute", "output_id": output.id,
-                                   "work_item_id": output.work_item_id,
-                                   "artifact_ref": output.artifact_ref, "attempt": attempt},
-                                  cost=exec_cost)
+                # after the change is committed but before the verdict is recoverable. When the
+                # Optimizer routed this item, tag the marker with the chosen implementer id so cost
+                # is attributed reliably (not via the executor self-tagging its Output's actor).
+                marker = {"stage": "execute", "output_id": output.id,
+                          "work_item_id": output.work_item_id,
+                          "artifact_ref": output.artifact_ref, "attempt": attempt}
+                if implementer_id is not None:
+                    marker["implementer"] = implementer_id
+                self.store.append(flow_id, "action", output.produced_by, marker, cost=exec_cost)
 
             # The external L1/L2 action goes through the idempotency wrapper. It runs on BOTH the
             # fresh and the resumed path, so a crash that wrote the marker but not the effect does
@@ -326,7 +361,7 @@ class CellHandbrake:
             action = ActionDescriptor(id=f"act-{item.id}", action_class=item.action_class,
                                       effect_kind="compensable", idempotency_key=key,
                                       intent={"output_id": output.id})
-            perform(action, _actor_of(self.executor, "Executor"),
+            perform(action, _actor_of(executor, "Executor"),
                     lambda _a: output.artifact_ref, self.ledger, self.governance,
                     store=self.store, flow_id=flow_id)
 

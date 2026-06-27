@@ -58,6 +58,15 @@ def test_timeline_shows_the_key_facts(tmp_path):
     assert "LL2" not in out
 
 
+def test_timeline_shows_the_optimizer_route_decision(tmp_path):
+    store = DurableEventStore(str(tmp_path / "state.db"))
+    store.append("f", "decision", ActorRef("Optimizer", "ref"),
+                 {"stage": "route", "work_item_id": "wi", "chosen": "haiku-light", "floor": 1,
+                  "costs": {"haiku-light": 1.0, "opus-strong": 20.0}})
+    out = format_timeline(store.read("f"))
+    assert "route → haiku-light (floor 1)" in out
+
+
 def test_tampered_payload_breaks_the_chain_and_is_surfaced(tmp_path):
     import json as _json
     import sqlite3

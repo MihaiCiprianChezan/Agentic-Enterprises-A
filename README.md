@@ -25,6 +25,7 @@ cell has driven a real CLI coding agent to take a ticket to a real pull request.
 | **M5** | governance compiled from the constitution (rules R1–R12, each tracing to a clause) |
 | **M6** | autonomy graduation by Board-ratified amendment (never automatic) |
 | **M7** | the Steward — drift/loop/cost quarantine + rollback |
+| **M8** | the Optimizer — route each work item to the cheapest implementer that clears its constitutional capability floor, by attributed cost (auditable, recovered on resume) |
 | **Composition** | one assembled `Cell` that demonstrates the §7 definition of done on stubs |
 | **Real runtime** | a real CLI coding agent (Claude Code by default) bound into the Executor seat |
 
@@ -146,7 +147,6 @@ The docs are authoritative — if code and a doc disagree, the doc wins (or the 
 
 Per the build plan and invariant #8 (add a tier only when its precondition exists):
 
-- **Optimizer** — only when capability/cost spread appears across implementers.
 - **Auditor + real version registry** — only when multiple versions run.
 - **A second cell · federation · the supra-constitution** — only once one cell is proven. The model
   defines the supra-constitution's *slot and precedence rule* (a cell enrolls by its own Board

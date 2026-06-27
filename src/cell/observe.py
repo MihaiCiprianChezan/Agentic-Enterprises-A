@@ -139,6 +139,8 @@ def key_fact(ev: Event) -> str:
             wi = p.get("work_items")
             n = len(wi) if isinstance(wi, list) else (wi or 0)
             return f"decompose · {n} work item" + ("" if n == 1 else "s")
+        if stage == "route":
+            return f"route → {p.get('chosen', '?')} (floor {p.get('floor')})"
         return stage or "decision"
     if k == "governance":
         lvl = p.get("authority_level", p.get("level"))  # handbrake gate vs RuleSetGovernance

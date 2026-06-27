@@ -258,6 +258,13 @@ Concrete software-delivery actions → class → level. Classes are coarse and i
 | Merge to main / trigger deploy | `CLASS_PRODUCTION` | L0 / out of scope | Art. 2.2, Art. 4 (production row) |
 | *Anything with no entry above* | `CLASS_NOVEL` | **L0** + classification proposal | Art. 4 (novel row) |
 
+**Capability floor (for the Optimizer, §10 / M8).** Alongside the registry, governance declares
+`CAPABILITY_FLOOR: {L3:1, L2:1, L1:2, L0:3}` — the minimum implementer capability tier each risk
+class requires. This is **constitutional input**: the Optimizer reads it and may minimize cost only
+*beneath* it, never routing a task below its floor. The Optimizer's per-implementer cost comes from
+the attributed event cost (§3) read across flows via `EventStore.all_events()` (the cross-flow
+signal the system roles consume, §2.1).
+
 ### 5.2 The rules
 Each rule = a check, an effect on violation, and its source clause.
 

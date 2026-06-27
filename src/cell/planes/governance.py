@@ -30,10 +30,22 @@ ACTION_CLASS_REGISTRY: dict[str, Level] = {
 
 NOVEL_LEVEL: Level = "L0"
 
+# The capability floor each risk class demands (model §10): higher risk requires a stronger minimum
+# implementer, and the Optimizer may only minimize cost *beneath* this floor — never route below it.
+# This is **constitutional input**, not an Optimizer judgment (a role that could both set the floor
+# and optimize against it could quietly lower it to save cost). Refinable only as constitutional
+# content, like the action-class registry it sits beside.
+CAPABILITY_FLOOR: dict[Level, int] = {"L3": 1, "L2": 1, "L1": 2, "L0": 3}
+
 
 def level_for(action_class: str) -> Level:
     """R3: unknown class -> L0 (fail-safe) and (caller should) emit a classification proposal."""
     return ACTION_CLASS_REGISTRY.get(action_class, NOVEL_LEVEL)
+
+
+def capability_floor(action_class: str) -> int:
+    """The minimum implementer capability tier a task of this action class requires (§10)."""
+    return CAPABILITY_FLOOR[level_for(action_class)]
 
 
 class PermissiveGovernance:

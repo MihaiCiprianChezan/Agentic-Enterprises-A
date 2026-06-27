@@ -47,7 +47,8 @@ class Cell:
                  ledger: Optional[EffectsLedger] = None,
                  recorder: Optional[TraceStore] = None,
                  loop_threshold: int = 3, cost_model: Any = None,
-                 max_revisions: int = 2, clock: Any = None) -> "Cell":
+                 max_revisions: int = 2, clock: Any = None,
+                 optimizer: Any = None, implementers: Any = None) -> "Cell":
         director = director or RefDirector()
         orchestrator = orchestrator or RefOrchestrator()
         executor = executor or RefExecutor()
@@ -60,7 +61,8 @@ class Cell:
         handbrake = CellHandbrake(
             director=director, orchestrator=orchestrator, executor=executor,
             verifier=verifier, store=store, ledger=ledger, governance=governance,
-            recorder=recorder, cost_model=cost_model, max_revisions=max_revisions, clock=clock)
+            recorder=recorder, cost_model=cost_model, max_revisions=max_revisions, clock=clock,
+            optimizer=optimizer, implementers=implementers)
         return cls(director, orchestrator, executor, verifier, store, governance,
                    ledger, recorder, steward, handbrake)
 
