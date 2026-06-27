@@ -13,13 +13,12 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import sqlite3
 import sys
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
-from cell.effects.wrapper import SqliteEffectsLedger
 from cell.planes.memory import CostDelta, DurableEventStore, Event, compute_hash
 from cell.planes.observability import total_cost
 
@@ -94,19 +93,16 @@ def _actors(events) -> list:
     return seen
 
 
-def summarize(events, ledger=None) -> RunSummary:
-    """Derive the at-a-glance run summary from the durable events (and, optionally, the effects
-    ledger for exactly-once confirmation)."""
+def summarize(events, confirm_once: Optional[Callable[[str], Optional[bool]]] = None) -> RunSummary:
+    """Derive the at-a-glance run summary from the durable events. `confirm_once`, if given, maps an
+    effect's idempotency key to its exactly-once status (True/False), or None if unknown."""
     flow_id = events[0].flow_id if events else ""
     gov = [e for e in events if e.kind == "governance"]
     effects = []
     for e in events:
         if _is_effect(e):
             key = e.payload.get("idempotency_key")
-            once = None
-            if ledger is not None and key is not None:
-                rec = ledger.get(key)
-                once = rec is not None and rec.status == "completed"
+            once = confirm_once(key) if (confirm_once is not None and key is not None) else None
             effects.append(EffectView(
                 label=e.payload.get("action_class") or e.payload.get("action_id") or "effect",
                 effect_kind=e.payload.get("effect_kind", ""),
@@ -145,7 +141,7 @@ def key_fact(ev: Event) -> str:
             return f"decompose · {n} work item" + ("" if n == 1 else "s")
         return stage or "decision"
     if k == "governance":
-        lvl = p.get("authority_level")
+        lvl = p.get("authority_level", p.get("level"))  # handbrake gate vs RuleSetGovernance
         lvl_s = f"{lvl}" if str(lvl).upper().startswith("L") else f"L{lvl}"  # "L2" or int 2 → "L2"
         out = f"{str(p.get('decision', '')).upper()} {lvl_s} {p.get('action_class', '')}".strip()
         if p.get("decision") == "block" and p.get("reason"):
@@ -229,15 +225,33 @@ def format_summary(s: RunSummary) -> str:
 
 # -- CLI ----------------------------------------------------------------------
 
-def _list_flows(db: str) -> list:
-    conn = sqlite3.connect(db)
+def _connect_ro(db: str) -> sqlite3.Connection:
+    """Open the state DB strictly read-only — a tamper-evidence inspector must never write to (or
+    even create schema in) the file it is auditing. Raises sqlite3.Error if it cannot open."""
+    uri = pathlib.Path(db).resolve().as_uri() + "?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _read_events(conn: sqlite3.Connection, flow_id: str) -> list:
+    rows = conn.execute(
+        "SELECT * FROM events WHERE flow_id = ? ORDER BY seq", (flow_id,)).fetchall()
+    return [DurableEventStore._row_to_event(r) for r in rows]
+
+
+def _list_flows(conn: sqlite3.Connection) -> list:
+    rows = conn.execute("SELECT DISTINCT flow_id FROM events ORDER BY flow_id").fetchall()
+    return [r[0] for r in rows]
+
+
+def _effect_confirmed(conn: sqlite3.Connection, key: str) -> Optional[bool]:
     try:
-        rows = conn.execute("SELECT DISTINCT flow_id FROM events ORDER BY flow_id").fetchall()
-        return [r[0] for r in rows]
-    except sqlite3.OperationalError:
-        return []
-    finally:
-        conn.close()
+        row = conn.execute(
+            "SELECT status FROM effects WHERE idempotency_key = ?", (key,)).fetchone()
+    except sqlite3.Error:
+        return None   # no effects ledger in this DB — degrade gracefully
+    return None if row is None else (row["status"] == "completed")
 
 
 def main(argv=None) -> int:
@@ -256,42 +270,49 @@ def main(argv=None) -> int:
     if not os.path.exists(db):
         print(f"state DB not found: {db}", file=sys.stderr)
         return 2
-
-    if len(args) < 2:
-        flows = _list_flows(db)
-        if not flows:
-            print(f"no flows found in {db}")
-            return 0
-        print(f"flows in {db}:")
-        for f in flows:
-            print(f"  {f}")
-        return 0
-
-    flow_id = args[1]
-    events = DurableEventStore(db).read(flow_id)
-    if not events:
-        print(f"no events for flow '{flow_id}'", file=sys.stderr)
-        flows = _list_flows(db)
-        if flows:
-            print("available flows: " + ", ".join(flows), file=sys.stderr)
-        return 2
-
     try:
-        ledger = SqliteEffectsLedger(db)
-    except Exception:
-        ledger = None
-    s = summarize(events, ledger)
-    print(format_header(s, os.path.basename(db)))
-    print()
-    print(format_timeline(events))
-    print()
-    print(format_summary(s))
-    if full:
-        print("\n--- full payloads ---")
-        for e in events:
-            print(f"#{e.seq} {e.kind}: "
-                  + json.dumps(e.payload, indent=2, sort_keys=True, default=str))
-    return 0
+        conn = _connect_ro(db)
+    except sqlite3.Error as exc:
+        print(f"cannot open state DB read-only: {db} ({exc})", file=sys.stderr)
+        return 2
+    try:
+        try:
+            if len(args) < 2:
+                flows = _list_flows(conn)
+                if not flows:
+                    print(f"no flows found in {db}")
+                    return 0
+                print(f"flows in {db}:")
+                for f in flows:
+                    print(f"  {f}")
+                return 0
+            flow_id = args[1]
+            events = _read_events(conn, flow_id)
+        except sqlite3.Error as exc:
+            print(f"not a readable cell state DB: {db} ({exc})", file=sys.stderr)
+            return 2
+
+        if not events:
+            print(f"no events for flow '{flow_id}'", file=sys.stderr)
+            flows = _list_flows(conn)
+            if flows:
+                print("available flows: " + ", ".join(flows), file=sys.stderr)
+            return 2
+
+        s = summarize(events, lambda key: _effect_confirmed(conn, key))
+        print(format_header(s, os.path.basename(db)))
+        print()
+        print(format_timeline(events))
+        print()
+        print(format_summary(s))
+        if full:
+            print("\n--- full payloads ---")
+            for e in events:
+                print(f"#{e.seq} {e.kind}: "
+                      + json.dumps(e.payload, indent=2, sort_keys=True, default=str))
+        return 0
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":  # pragma: no cover

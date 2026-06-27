@@ -96,6 +96,45 @@ def test_cli_missing_db_exits_2(tmp_path):
     assert main([str(tmp_path / "absent.db")]) == 2
 
 
+def test_observe_does_not_write_to_the_db(tmp_path):
+    # A tamper-evidence inspector must be truly read-only: opening + reading must not alter a byte.
+    import hashlib
+    db = str(tmp_path / "state.db")
+    _build_passing_flow(db).close()
+    digest = lambda: hashlib.sha256(open(db, "rb").read()).hexdigest()
+    before = digest()
+    assert main([db, "f1"]) == 0
+    assert digest() == before
+
+
+def test_governance_with_level_key_renders_the_level(tmp_path):
+    # RuleSetGovernance logs "level"; the handbrake gate logs "authority_level". Handle both.
+    store = DurableEventStore(str(tmp_path / "state.db"))
+    store.append("f", "governance", ActorRef("Executor", "ref"),
+                 {"decision": "allow", "level": "L2", "action_class": "CLASS_OWN_WRITE"})
+    line = format_timeline(store.read("f"))
+    assert "ALLOW L2 CLASS_OWN_WRITE" in line
+    assert "LNone" not in line
+
+
+def test_summarize_confirms_exactly_once_via_callback(tmp_path):
+    store = _build_passing_flow(str(tmp_path / "state.db"))
+    s = summarize(store.read("f1"), confirm_once=lambda key: True)
+    assert s.effects[0].once_confirmed is True
+
+
+def test_cli_non_sqlite_file_exits_2(tmp_path):
+    bad = tmp_path / "notadb.txt"
+    bad.write_text("not a database")
+    assert main([str(bad), "f1"]) == 2
+
+
+def test_cli_directory_path_exits_2(tmp_path):
+    d = tmp_path / "adir"
+    d.mkdir()
+    assert main([str(d), "f1"]) == 2
+
+
 def test_cli_prints_a_full_report_for_a_known_flow(tmp_path, capsys):
     db = str(tmp_path / "state.db")
     _build_passing_flow(db)
