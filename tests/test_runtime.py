@@ -140,3 +140,38 @@ def test_real_verifier_returns_on_red_tests(tmp_path):
     verdict = RealVerifier(str(tmp_path)).verify(_output(), _goal())
     assert verdict.decision == "return"
     assert "fail" in verdict.reason.lower()
+
+
+from cell.cell import Cell
+from cell.runtime.deliver import deliver_on_pass
+
+
+def test_deliver_opens_a_pr_through_perform():
+    cell = Cell.assemble()
+    calls = {"n": 0}
+
+    def fake_effect(intent):
+        calls["n"] += 1
+        return "https://github.com/x/y/pull/1"
+
+    actor = ActorRef("Executor", "real-cli")
+    url = deliver_on_pass(cell, "f1", "feat/wi-1", actor=actor, title="t", body="b",
+                          repo_dir="/tmp/x", effect=fake_effect)
+    assert url == "https://github.com/x/y/pull/1"
+    assert calls["n"] == 1
+
+
+def test_deliver_is_exactly_once_on_resume():
+    cell = Cell.assemble()
+    calls = {"n": 0}
+
+    def fake_effect(intent):
+        calls["n"] += 1
+        return "https://github.com/x/y/pull/1"
+
+    actor = ActorRef("Executor", "real-cli")
+    kw = dict(actor=actor, title="t", body="b", repo_dir="/tmp/x", effect=fake_effect)
+    first = deliver_on_pass(cell, "f1", "feat/wi-1", **kw)
+    second = deliver_on_pass(cell, "f1", "feat/wi-1", **kw)  # a resume
+    assert first == second == "https://github.com/x/y/pull/1"
+    assert calls["n"] == 1  # the PR is never opened twice
