@@ -11,7 +11,7 @@ import pytest
 
 from cell.cell import Cell
 from cell.handbrake import Paused
-from cell.domain.objects import ActorRef, BudgetCap, CriterionScore, Output, Ticket, Verdict, WorkItem
+from cell.domain.objects import ActorRef, BudgetCap, CriterionScore, Ticket, Verdict, WorkItem
 from cell.planes.governance import RuleSetGovernance
 from cell.planes.memory import CostDelta, InMemoryEventStore
 from cell.effects.wrapper import GovernanceBlocked, InMemoryEffectsLedger

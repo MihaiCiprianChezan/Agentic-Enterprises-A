@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional, Union
 
-from cell.domain.objects import Ticket, Verdict
+from cell.domain.objects import ActorRef, Ticket, Verdict
 from cell.effects.wrapper import EffectsLedger, GovernanceCheck, InMemoryEffectsLedger
 from cell.handbrake import Briefing, CellHandbrake, Paused
 from cell.planes.governance import RuleSetGovernance
@@ -72,7 +72,7 @@ class Cell:
     def inspect(self, flow_id: str) -> Briefing:
         return self.handbrake.inspect(flow_id)
 
-    def inject(self, flow_id: str, value: dict, actor) -> None:
+    def inject(self, flow_id: str, value: dict, actor: ActorRef) -> None:
         return self.handbrake.inject(flow_id, value, actor)
 
     def resume(self, flow_id: str) -> Union[Verdict, Paused]:
@@ -97,6 +97,7 @@ class Cell:
         return total_cost(self.store.read(flow_id))
 
     def governance_log(self, flow_id: str):
+        """All governance-plane events for the flow — both the _govern action-site gate decisions and any R11 injection blocks."""
         return [e for e in self.store.read(flow_id) if e.kind == "governance"]
 
     def events(self, flow_id: str):

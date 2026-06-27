@@ -282,7 +282,8 @@ class CellHandbrake:
 
             self.store.append(flow_id, "action", output.produced_by,
                               {"stage": "execute", "output_id": output.id,
-                               "work_item_id": output.work_item_id, "artifact_ref": output.artifact_ref},
+                               "work_item_id": output.work_item_id, "artifact_ref": output.artifact_ref,
+                               "attempt": attempt},
                               cost=self._ecost("execute"))
 
             with tracer.span("verify", _actor_of(self.verifier, "Verifier"), "verification"):
@@ -293,7 +294,8 @@ class CellHandbrake:
                 )
             self.store.append(flow_id, "verdict", verdict.verified_by,
                               {"stage": "verify", "verdict_id": verdict.id, "decision": verdict.decision,
-                               "output_id": output.id, "work_item_id": output.work_item_id},
+                               "output_id": output.id, "work_item_id": output.work_item_id,
+                               "attempt": attempt},
                               cost=self._ecost("verify"))
 
             if verdict.decision == "return" and attempt < self.max_revisions:

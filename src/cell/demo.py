@@ -10,9 +10,8 @@ from datetime import datetime, timezone
 
 from cell.cell import Cell
 from cell.domain.objects import (ActorRef, BudgetCap, CriterionScore, Ticket, Verdict, WorkItem)
-from cell.effects.wrapper import GovernanceBlocked
+from cell.effects.wrapper import GovernanceBlocked, InMemoryEffectsLedger
 from cell.planes.memory import CostDelta, InMemoryEventStore
-from cell.effects.wrapper import InMemoryEffectsLedger
 from cell.roles.reference import EXECUTOR, RefExecutor
 
 _T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
