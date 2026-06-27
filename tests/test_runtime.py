@@ -109,3 +109,34 @@ def test_real_executor_raises_on_agent_failure(tmp_path):
 
     with pytest.raises(ExecutorError):
         RealExecutor(FailingRunner(), str(tmp_path), "feat/wi-1").execute(_work_item())
+
+
+from cell.domain.objects import BudgetCap, CriterionScore, Goal, Output, Verdict
+from cell.runtime.real_verifier import RealVerifier
+
+
+def _goal() -> Goal:
+    return Goal(id="g-1", ticket_id="t-1", outcome="x",
+                acceptance_criteria=[Criterion(id="c1", statement="tests pass", kind="test")],
+                budget_cap=BudgetCap(compute=1, wall_clock_ms=1),
+                created_by=ActorRef("Director", "x"), created_at=datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+
+def _output() -> Output:
+    return Output(id="out-1", work_item_id="wi-1", artifact_ref="branch:x@1",
+                  produced_by=ActorRef("Executor", "x"), trace_ref="t",
+                  produced_at=datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+
+def test_real_verifier_passes_on_green_tests(tmp_path):
+    Path(tmp_path, "test_ok.py").write_text("def test_ok():\n    assert 1 == 1\n")
+    verdict = RealVerifier(str(tmp_path)).verify(_output(), _goal())
+    assert verdict.decision == "pass"
+    assert verdict.verified_by != _output().produced_by  # R5 independence
+
+
+def test_real_verifier_returns_on_red_tests(tmp_path):
+    Path(tmp_path, "test_bad.py").write_text("def test_bad():\n    assert 1 == 2\n")
+    verdict = RealVerifier(str(tmp_path)).verify(_output(), _goal())
+    assert verdict.decision == "return"
+    assert "fail" in verdict.reason.lower()
