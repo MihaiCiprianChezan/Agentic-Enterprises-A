@@ -1,0 +1,92 @@
+"""Graduating autonomy — Board-ratified amendments to the authority ceilings (M6).
+
+Realizes One-Cell-Build-Plan §6 M6. Autonomy levels start conservative (Constitution Art. 4)
+and are raised only on observed evidence, and only by a Board-ratified amendment (Art. 4.1,
+8.3). Performance earns a *proposal*; only the Board turns a proposal into a rule (Art. 8.4;
+invariant #10 — agents never author their own constraints).
+
+A promotion therefore never happens automatically: the Observability/Auditor surface a
+`PromotionProposal`, and the Board `ratify`s it, which re-compiles the governance registry and
+records the amendment on the Board-acts audit trail (Art. 8.3, 10.2; tamper-evident per R12).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from cell.domain.objects import ActorRef, Level
+from cell.planes.governance import ACTION_CLASS_REGISTRY, level_for
+
+# The Board-acts audit trail, kept separate from any role flow (Constitution Art. 10.2).
+BOARD_TRAIL = "board"
+
+
+@dataclass(frozen=True)
+class PromotionProposal:
+    """A proposed raise of one action class's ceiling, surfaced by Observability/Auditor
+    (Art. 8.4). It is only a proposal until the Board ratifies it."""
+    action_class: str
+    from_level: Level
+    to_level: Level
+    evidence: str
+    proposed_by: ActorRef
+
+
+class AmendmentRefused(Exception):
+    """A ratification that is not the Board's, or not backed by evidence — refused and logged
+    (Constitution Art. 8.2, 8.4; invariant #10)."""
+
+
+class AutonomyBoard:
+    """The Board's amendment authority over the autonomy ceilings. Construct it with the
+    authorized Board member identities (the constitution's Art. 8.2 decision rule) and the
+    durable store that carries the Board-acts trail."""
+
+    def __init__(self, *, members: set[str], store: Any) -> None:
+        self._members = set(members)
+        self._store = store
+
+    def propose(self, action_class: str, to_level: Level, evidence: str,
+                proposed_by: ActorRef) -> PromotionProposal:
+        """Surface a promotion proposal (Art. 8.4). Recorded on the Board trail, but it changes
+        nothing — only `ratify` applies it."""
+        proposal = PromotionProposal(
+            action_class=action_class, from_level=level_for(action_class),
+            to_level=to_level, evidence=evidence, proposed_by=proposed_by)
+        self._store.append(BOARD_TRAIL, "decision", proposed_by, {
+            "stage": "promotion_proposal", "action_class": action_class,
+            "from": proposal.from_level, "to": to_level, "evidence": evidence,
+        })
+        return proposal
+
+    def ratify(self, proposal: PromotionProposal, ratifier: ActorRef,
+               base_registry: dict[str, Level] = ACTION_CLASS_REGISTRY) -> dict[str, Level]:
+        """The Board turns a proposal into a rule. Returns the re-compiled registry (build a
+        fresh RuleSetGovernance from it). Refuses — and logs the block — if the ratifier is not
+        the Board or the proposal carries no evidence (Art. 8.2/8.4; invariant #10)."""
+        if not self._is_board(ratifier):
+            self._block(ratifier, proposal, "only the Board may ratify an amendment (Art. 8.2)")
+            raise AmendmentRefused("only the Board may ratify an autonomy amendment (Art. 8.2)")
+        if not proposal.evidence:
+            self._block(ratifier, proposal, "a promotion must be earned on observed evidence (Art. 8.4)")
+            raise AmendmentRefused("a promotion must be earned on observed evidence (Art. 8.4)")
+
+        amended = dict(base_registry)
+        amended[proposal.action_class] = proposal.to_level
+        # The amendment itself is a governed, audited artifact on the Board-acts trail.
+        self._store.append(BOARD_TRAIL, "governance", ratifier, {
+            "stage": "amendment", "decision": "ratified", "clause": "Art. 8.3",
+            "action_class": proposal.action_class, "from": proposal.from_level,
+            "to": proposal.to_level, "evidence": proposal.evidence,
+        })
+        return amended
+
+    def _is_board(self, actor: ActorRef) -> bool:
+        return getattr(actor, "mode", "agent") == "human" and actor.version in self._members
+
+    def _block(self, ratifier: ActorRef, proposal: PromotionProposal, reason: str) -> None:
+        self._store.append(BOARD_TRAIL, "governance", ratifier, {
+            "stage": "amendment", "decision": "block", "clause": "Art. 8",
+            "action_class": proposal.action_class, "reason": reason,
+        })
