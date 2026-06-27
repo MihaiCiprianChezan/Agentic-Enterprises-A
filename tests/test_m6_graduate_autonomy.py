@@ -114,3 +114,44 @@ def test_ratification_requires_evidence():
     proposal = PromotionProposal("CLASS_OWN_WRITE", "L2", "L3", evidence="", proposed_by=OBSERVABILITY)
     with pytest.raises(AmendmentRefused):
         board.ratify(proposal, BOARD)  # promotion must be earned on observed evidence
+
+
+# --- review fixes: real raises, current-registry consistency, richer blocks --
+
+def test_proposal_uses_the_boards_current_registry():
+    # If the cell already runs an amended registry, the proposal's from_level reflects it.
+    store = InMemoryEventStore()
+    amended = dict(ACTION_CLASS_REGISTRY)
+    amended["CLASS_OWN_WRITE"] = "L3"
+    board = AutonomyBoard(members={"human:mihai"}, store=store, registry=amended)
+    proposal = board.propose("CLASS_OWN_WRITE", "L3", evidence="x", proposed_by=OBSERVABILITY)
+    assert proposal.from_level == "L3"
+
+
+def test_ratify_refuses_a_non_raise():
+    store = InMemoryEventStore()
+    board = _board(store)
+    proposal = board.propose("CLASS_OWN_WRITE", "L2", evidence="clean", proposed_by=OBSERVABILITY)
+    with pytest.raises(AmendmentRefused):
+        board.ratify(proposal, BOARD)  # L2 -> L2 is not a graduation
+
+
+def test_ratify_refuses_a_stale_proposal():
+    store = InMemoryEventStore()
+    board = _board(store)
+    # from_level claims L1 but the current ceiling is L2 -> stale/inconsistent
+    stale = PromotionProposal("CLASS_OWN_WRITE", "L1", "L3", evidence="clean", proposed_by=OBSERVABILITY)
+    with pytest.raises(AmendmentRefused):
+        board.ratify(stale, BOARD)
+
+
+def test_block_event_includes_context():
+    store = InMemoryEventStore()
+    board = _board(store)
+    proposal = board.propose("CLASS_OWN_WRITE", "L3", evidence="clean run", proposed_by=OBSERVABILITY)
+    with pytest.raises(AmendmentRefused):
+        board.ratify(proposal, AGENT)
+    block = [e for e in store.read(BOARD_TRAIL) if e.payload.get("decision") == "block"][-1]
+    assert block.payload["to"] == "L3"
+    assert block.payload["from"] == "L2"
+    assert block.payload["evidence"] == "clean run"
