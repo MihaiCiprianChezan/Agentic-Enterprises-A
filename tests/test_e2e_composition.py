@@ -135,7 +135,8 @@ def test_out_of_policy_action_is_blocked_and_traceable():
 def test_steward_quarantines_an_induced_loop_before_the_cap():
     cell = Cell.assemble(verifier=ReturnVerifier(), max_revisions=5, loop_threshold=3,
                          cost_model=lambda stage: CostDelta(compute=100))
-    cell.submit(_ticket(), "f1")  # L2 item, loops on 'return' up to max_revisions
+    verdict = cell.submit(_ticket(), "f1")  # runs to revision exhaustion
+    assert verdict.decision == "return"
     budget = BudgetCap(compute=10_000, wall_clock_ms=15 * 60 * 1000)
     action = cell.assess("f1", budget)
     assert action.kind == "quarantine"

@@ -304,3 +304,36 @@ def test_governance_gate_allows_and_logs_an_l2_work_item():
     assert verdict.decision == "pass"
     gate = [e for e in store.read("f1") if e.payload.get("stage") == "gate"]
     assert gate and gate[-1].payload["decision"] == "allow"
+
+
+def test_do_item_revises_up_to_max_revisions_on_return():
+    # The handbrake's _do_item runs the produce -> score -> revise loop directly: an
+    # always-'return' verifier re-executes up to max_revisions, then returns the final
+    # 'return' verdict (revisions exhausted). Covers the loop in isolation, not via the Steward.
+    from cell.domain.objects import CriterionScore, Verdict
+    from cell.roles.reference import RefOrchestrator
+
+    store = InMemoryEventStore()
+    calls = {"n": 0}
+
+    class CountingExecutor:
+        actor = EXECUTOR
+
+        def execute(self, item):
+            calls["n"] += 1
+            return RefExecutor().execute(item)
+
+    class ReturnVerifier:
+        actor = ActorRef(role="Verifier", version="ref-v0")
+
+        def verify(self, output, goal):
+            return Verdict(id=f"v-{output.id}", output_id=output.id, decision="return",
+                           scores=[CriterionScore(criterion_id="c", result="unclear")],
+                           reason="revise", verified_by=self.actor, verified_at=_T0)
+
+    hb = CellHandbrake(director=RefDirector(), orchestrator=RefOrchestrator(),
+                       executor=CountingExecutor(), verifier=ReturnVerifier(),
+                       store=store, max_revisions=3)
+    verdict = hb.start(_ticket(), "f1")
+    assert verdict.decision == "return"
+    assert calls["n"] == 4  # initial attempt + 3 revisions
