@@ -64,6 +64,8 @@ src/cell/
   roles/reference.py    # reference implementers of the operating roles (M2)
   flow.py               # run_flow — composes the role contracts + traces them (M2/M3)
   handbrake.py          # CellHandbrake — the five control primitives on the flow (M4)
+  runtime/              # bind a real CLI coding agent to the Executor seat (sub-project B)
+  live.py               # opt-in live real-slice runner (CELL_LIVE=1 python -m cell.live)
   cell.py               # Cell — composition root; wires every plane + the live governance gate
   demo.py               # runnable end-to-end demo of the §7 definition of done (python -m cell.demo)
   autonomy.py           # AutonomyBoard — Board-ratified ceiling amendments (M6)
