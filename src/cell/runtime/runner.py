@@ -76,6 +76,8 @@ class CliAgentRunner:
 
     def run(self, prompt: str, cwd: str) -> RunResult:
         argv = render_argv(self.spec)
+        if not argv:
+            raise RunnerError("CliAgentSpec has no command (empty argv_template)")
         # Resolve the binary to a full path so subprocess finds it cross-platform — on Windows a
         # CLI agent is often a PATHEXT shim (e.g. npm's claude.CMD) that the bare name won't
         # resolve without a shell; shutil.which honours PATH + PATHEXT.
@@ -85,9 +87,11 @@ class CliAgentRunner:
         argv = [resolved, *argv[1:]]
         try:
             # The prompt goes on stdin so a multi-line prompt can't break a Windows .CMD shim's
-            # argument parsing (which would silently drop the permission flags after it).
-            proc = subprocess.run(argv, cwd=cwd, input=prompt, capture_output=True, text=True,
-                                  timeout=self.timeout)
+            # argument parsing (which would silently drop the permission flags after it). Encoding
+            # is pinned to UTF-8 so a non-ASCII prompt is stable across platforms (Windows text
+            # mode would otherwise use a locale codepage like cp1252).
+            proc = subprocess.run(argv, cwd=cwd, input=prompt, capture_output=True,
+                                  encoding="utf-8", timeout=self.timeout)
         except FileNotFoundError as exc:
             raise RunnerError(f"CLI agent binary not found: {argv[0]!r}") from exc
         except subprocess.TimeoutExpired as exc:

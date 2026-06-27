@@ -42,6 +42,23 @@ def test_runner_passes_the_prompt_on_stdin(tmp_path):
     assert (tmp_path / "got.txt").read_text() == "the real prompt"
 
 
+def test_runner_encodes_the_prompt_as_utf8_on_stdin(tmp_path):
+    # A non-ASCII prompt must reach the agent as UTF-8 regardless of the platform's locale
+    # codepage. The child reads raw bytes so the assertion is deterministic cross-platform.
+    spec = CliAgentSpec(
+        argv_template=["python", "-c",
+                       "import sys, pathlib; pathlib.Path('got.bin').write_bytes(sys.stdin.buffer.read())"],
+        permission_args=[], instruction_file="X")
+    CliAgentRunner(spec).run("café — slugify ✨", str(tmp_path))
+    assert (tmp_path / "got.bin").read_bytes() == "café — slugify ✨".encode("utf-8")
+
+
+def test_runner_raises_on_an_empty_argv_template(tmp_path):
+    spec = CliAgentSpec(argv_template=[], permission_args=[], instruction_file="X")
+    with pytest.raises(RunnerError):
+        CliAgentRunner(spec).run("x", str(tmp_path))
+
+
 def test_runner_runs_a_real_subprocess_in_cwd(tmp_path):
     spec = CliAgentSpec(
         argv_template=["python", "-c", "import pathlib; pathlib.Path('out.txt').write_text('hi')"],
