@@ -175,3 +175,11 @@ def test_deliver_is_exactly_once_on_resume():
     second = deliver_on_pass(cell, "f1", "feat/wi-1", **kw)  # a resume
     assert first == second == "https://github.com/x/y/pull/1"
     assert calls["n"] == 1  # the PR is never opened twice
+
+
+def test_live_is_opt_in(capsys, monkeypatch):
+    monkeypatch.delenv("CELL_LIVE", raising=False)
+    from cell import live
+    live.main()
+    out = capsys.readouterr().out
+    assert "opt-in" in out.lower()
