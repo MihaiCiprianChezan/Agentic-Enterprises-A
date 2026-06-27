@@ -191,6 +191,21 @@ The MVP earns its place when, on the real software-delivery slice:
 
 Hit those four and the two riskiest assumptions in the model — idempotency on real external effects (invariant #4) and faithful constitution→enforcement (§17) — have been tested on something real rather than asserted. That is the entire point of building one cell before a federation.
 
+### 7.1 The composition root and the demonstration
+
+The cell is assembled at one **composition root** — a `Cell` that wires the planes, the four
+operating roles, the live governance gate (`RuleSetGovernance`), the effects ledger, the trace
+recorder, and the Steward into one object. The four proofs above are *demonstrated* end to end
+over this root by a composition harness (integration tests) and a runnable demo, on
+deterministic reference roles. `PermissiveGovernance` is development-only; the assembled cell
+gates on the compiled rules.
+
+The composition root is also the **single seam for the agentic role-runtime**: a real Executor
+(or any role implementer) binds by passing it to the assembler, with nothing else changing
+(invariant #1). Choosing and binding that runtime — to prove the routine path on a *real*
+software-delivery slice — is the next step beyond this MVP, deliberately deferred until the
+substrate is proven.
+
 ---
 
 ## 8. What this plan deliberately leaves for later

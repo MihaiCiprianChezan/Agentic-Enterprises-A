@@ -27,6 +27,7 @@ from cell.domain.objects import ActorRef, BudgetCap, Output, Ticket, Verdict, Wo
 from cell.effects.wrapper import (
     ActionDescriptor,
     EffectsLedger,
+    GovernanceBlocked,
     GovernanceCheck,
     InMemoryEffectsLedger,
     make_idempotency_key,
@@ -168,9 +169,9 @@ class CellHandbrake:
         return Briefing(
             flow_id=flow_id, role=item.assigned_to.role, step=cp.step,
             why=cp.pending_action.get("reason", "static breakpoint"),
-            pending_action=cp.pending_action, authority_level=item.authority_level,
+            pending_action=cp.pending_action, authority_level=level_for(item.action_class),
             recent_decisions=recent, cost=total_cost(events), budget_cap=goal.budget_cap,
-            valid_moves=self._moves(item.authority_level),
+            valid_moves=self._moves(level_for(item.action_class)),
         )
 
     def inject(self, flow_id: str, value: dict[str, Any], actor: ActorRef) -> None:
@@ -227,7 +228,8 @@ class CellHandbrake:
         verdict: Optional[Verdict] = None
         while index < len(items):
             item = items[index]
-            if item.authority_level in ("L0", "L1") or self._adhoc_hit(flow_id, item):
+            self._govern(flow_id, item)  # R6 gate at the action site (logs allow/block)
+            if level_for(item.action_class) in ("L0", "L1") or self._adhoc_hit(flow_id, item):
                 return self._pause(flow_id, ticket, index, item)
             verdict = self._do_item(flow_id, item, goal, None)
             if verdict.decision != "pass":
@@ -237,9 +239,10 @@ class CellHandbrake:
         return verdict
 
     def _pause(self, flow_id, ticket, index, item) -> Paused:
-        reason = f"static breakpoint before {item.authority_level} action (Art. 5.2)"
+        effective_level = level_for(item.action_class)
+        reason = f"static breakpoint before {effective_level} action (Art. 5.2)"
         pending = {"kind": "execute", "work_item_id": item.id, "action_class": item.action_class,
-                   "authority_level": item.authority_level, "reason": reason}
+                   "authority_level": effective_level, "reason": reason}
         bp_event = self.store.append(flow_id, "breakpoint", item.assigned_to,
                                      {"stage": "breakpoint", "work_item_id": item.id, "reason": reason})
         self.store.checkpoint(Checkpoint(
@@ -257,48 +260,58 @@ class CellHandbrake:
             return existing  # idempotent resume: already executed, do not re-run
 
         tracer = self._tracer(flow_id)
-        if injection is not None and injection["value"].get("type") == "edited_output":
-            v = injection["value"]
-            output = Output(id=v["output_id"], work_item_id=item.id,
-                            artifact_ref=v["artifact_ref"], produced_by=injection["actor"],
-                            trace_ref="trace://injected", produced_at=_now())
-        else:
-            with tracer.span("execute", _actor_of(self.executor, "Executor"), "tool_call"):
-                output = self.executor.execute(item)
+        attempt = 0
+        while True:
+            if injection is not None and injection["value"].get("type") == "edited_output":
+                v = injection["value"]
+                output = Output(id=v["output_id"], work_item_id=item.id,
+                                artifact_ref=v["artifact_ref"], produced_by=injection["actor"],
+                                trace_ref="trace://injected", produced_at=_now())
+            else:
+                with tracer.span("execute", _actor_of(self.executor, "Executor"), "tool_call"):
+                    output = self.executor.execute(item)
 
-        # The external L1/L2 action goes through the idempotency wrapper — exactly-once on
-        # resume, never re-fired after completion (invariant #4 / M0).
-        key = make_idempotency_key(flow_id, f"execute:{item.id}", {"output_id": output.id})
-        action = ActionDescriptor(id=f"act-{item.id}", action_class=item.action_class,
-                                  effect_kind="compensable", idempotency_key=key,
-                                  intent={"output_id": output.id})
-        perform(action, _actor_of(self.executor, "Executor"),
-                lambda _a: output.artifact_ref, self.ledger, self.governance,
-                store=self.store, flow_id=flow_id)
+            # The external L1/L2 action goes through the idempotency wrapper — exactly-once on
+            # resume, never re-fired after completion (invariant #4 / M0).
+            key = make_idempotency_key(flow_id, f"execute:{item.id}", {"output_id": output.id})
+            action = ActionDescriptor(id=f"act-{item.id}", action_class=item.action_class,
+                                      effect_kind="compensable", idempotency_key=key,
+                                      intent={"output_id": output.id})
+            perform(action, _actor_of(self.executor, "Executor"),
+                    lambda _a: output.artifact_ref, self.ledger, self.governance,
+                    store=self.store, flow_id=flow_id)
 
-        self.store.append(flow_id, "action", output.produced_by,
-                          {"stage": "execute", "output_id": output.id,
-                           "work_item_id": output.work_item_id, "artifact_ref": output.artifact_ref},
-                          cost=self._ecost("execute"))
+            self.store.append(flow_id, "action", output.produced_by,
+                              {"stage": "execute", "output_id": output.id,
+                               "work_item_id": output.work_item_id, "artifact_ref": output.artifact_ref,
+                               "attempt": attempt},
+                              cost=self._ecost("execute"))
 
-        with tracer.span("verify", _actor_of(self.verifier, "Verifier"), "verification"):
-            verdict = self.verifier.verify(output, goal)
-        if verdict.verified_by == output.produced_by:
-            raise NonIndependentVerification(
-                f"verified_by {verdict.verified_by} must differ from produced_by {output.produced_by}"
-            )
-        self.store.append(flow_id, "verdict", verdict.verified_by,
-                          {"stage": "verify", "verdict_id": verdict.id, "decision": verdict.decision,
-                           "output_id": output.id, "work_item_id": output.work_item_id},
-                          cost=self._ecost("verify"))
-        return verdict
+            with tracer.span("verify", _actor_of(self.verifier, "Verifier"), "verification"):
+                verdict = self.verifier.verify(output, goal)
+            if verdict.verified_by == output.produced_by:
+                raise NonIndependentVerification(
+                    f"verified_by {verdict.verified_by} must differ from produced_by {output.produced_by}"
+                )
+            self.store.append(flow_id, "verdict", verdict.verified_by,
+                              {"stage": "verify", "verdict_id": verdict.id, "decision": verdict.decision,
+                               "output_id": output.id, "work_item_id": output.work_item_id,
+                               "attempt": attempt},
+                              cost=self._ecost("verify"))
+
+            if verdict.decision == "return" and attempt < self.max_revisions:
+                attempt += 1
+                injection = None  # only consume the injection on the first attempt
+                continue  # produce -> score -> revise loop (mirrors flow._produce_and_verify)
+            return verdict
 
     def _existing_verdict(self, flow_id, item) -> Optional[Verdict]:
         events = self.store.read(flow_id)
-        verify = next((e for e in events if e.payload.get("stage") == "verify"
-                       and e.payload.get("work_item_id") == item.id), None)
-        if verify is None:
+        matches = [e for e in events if e.payload.get("stage") == "verify"
+                   and e.payload.get("work_item_id") == item.id]
+        if not matches:
             return None
+        verify = matches[-1]
         p = verify.payload
         return Verdict(id=p["verdict_id"], output_id=p["output_id"], decision=p["decision"],
                        scores=[], reason="(reconstructed from the durable trail)",
@@ -317,6 +330,22 @@ class CellHandbrake:
     def _adhoc_hit(self, flow_id, item) -> bool:
         targets = {f"pre-execute:{item.id}", "pre-execute"}
         return any(bp["step"] in targets for bp in self.list_breakpoints(flow_id))
+
+    def _govern(self, flow_id, item) -> None:
+        """R6: evaluate the work item's action against the compiled rules before it pauses or
+        executes, and log the allow/block decision (R12). A block stops it up front."""
+        actor = _actor_of(self.executor, "Executor")
+        action = ActionDescriptor(
+            id=f"gate-{item.id}", action_class=item.action_class, effect_kind="compensable",
+            idempotency_key=make_idempotency_key(flow_id, f"gate:{item.id}", {"wi": item.id}),
+            intent={"work_item_id": item.id})
+        allowed, reason = self.governance.evaluate(action, actor)
+        self.store.append(flow_id, "governance", actor, {
+            "stage": "gate", "decision": "allow" if allowed else "block",
+            "action_class": item.action_class, "authority_level": item.authority_level,
+            "reason": reason})
+        if not allowed:
+            raise GovernanceBlocked(reason)
 
     def _moves(self, level: str) -> list[str]:
         if level == "L0":

@@ -64,6 +64,8 @@ src/cell/
   roles/reference.py    # reference implementers of the operating roles (M2)
   flow.py               # run_flow — composes the role contracts + traces them (M2/M3)
   handbrake.py          # CellHandbrake — the five control primitives on the flow (M4)
+  cell.py               # Cell — composition root; wires every plane + the live governance gate
+  demo.py               # runnable end-to-end demo of the §7 definition of done (python -m cell.demo)
   autonomy.py           # AutonomyBoard — Board-ratified ceiling amendments (M6)
   steward.py            # Steward — drift/loop/cost quarantine + rollback (M7)
   planes/
@@ -79,6 +81,9 @@ tests/                  # one suite per milestone (M0–M7)
 
 - **The docs are authoritative.** If code and a doc disagree, the doc wins — or amend the doc
   first (it is a living constitution; changes are tracked, per Build-Spec §5.4).
+- **The assembled cell gates on the compiled rules.** `Cell.assemble()` wires `RuleSetGovernance`
+  as the live R6 gate at the action site; `PermissiveGovernance` is a dev-only stub. The
+  composition root (`cell/cell.py`) is the single seam where a real role-runtime binds.
 - **Trace every claim to a clause.** Governance rules and gates cite a constitution Article;
   keep that traceability when you implement them (Build-Spec §5.4 validation/attestation).
 - **YAGNI / invariant #8.** Do not build the Optimizer, the Auditor, a message broker, or a

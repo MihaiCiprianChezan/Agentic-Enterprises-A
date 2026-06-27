@@ -258,3 +258,135 @@ def test_a_fresh_controller_resumes_from_the_durable_plane():
                           store=store, ledger=ledger)
     verdict = fresh.resume("f1")
     assert verdict.decision == "pass"
+
+
+def test_governance_gate_blocks_an_l0_work_item_up_front():
+    from cell.planes.governance import RuleSetGovernance
+    from cell.effects.wrapper import GovernanceBlocked
+
+    class L0Orchestrator:
+        actor = ActorRef(role="Orchestrator", version="l0")
+
+        def decompose(self, goal):
+            return [WorkItem(id=f"wi-{goal.id}", goal_id=goal.id, description="push",
+                             assigned_to=EXECUTOR, action_class="CLASS_HIGH_BLAST",
+                             authority_level="L0", acceptance_criteria=list(goal.acceptance_criteria))]
+
+    calls = {"n": 0}
+
+    class CountingExecutor:
+        actor = EXECUTOR
+
+        def execute(self, item):
+            calls["n"] += 1
+            return RefExecutor().execute(item)
+
+    store = InMemoryEventStore()
+    hb = CellHandbrake(director=RefDirector(), orchestrator=L0Orchestrator(),
+                       executor=CountingExecutor(), verifier=RefVerifier(), store=store,
+                       governance=RuleSetGovernance())
+    with pytest.raises(GovernanceBlocked):
+        hb.start(_ticket(), "f1")
+    assert calls["n"] == 0  # never executed
+    gate = [e for e in store.read("f1") if e.payload.get("stage") == "gate"]
+    assert gate and gate[-1].payload["decision"] == "block"
+    assert "Art. 4" in gate[-1].payload["reason"]  # the clause travels in the reason
+
+
+def test_governance_gate_allows_and_logs_an_l2_work_item():
+    from cell.planes.governance import RuleSetGovernance
+    from cell.roles.reference import RefOrchestrator
+    store = InMemoryEventStore()
+    hb = CellHandbrake(director=RefDirector(), orchestrator=RefOrchestrator(),
+                       executor=RefExecutor(), verifier=RefVerifier(), store=store,
+                       governance=RuleSetGovernance())
+    verdict = hb.start(_ticket(), "f1")
+    assert verdict.decision == "pass"
+    gate = [e for e in store.read("f1") if e.payload.get("stage") == "gate"]
+    assert gate and gate[-1].payload["decision"] == "allow"
+
+
+def test_do_item_revises_up_to_max_revisions_on_return():
+    # The handbrake's _do_item runs the produce -> score -> revise loop directly: an
+    # always-'return' verifier re-executes up to max_revisions, then returns the final
+    # 'return' verdict (revisions exhausted). Covers the loop in isolation, not via the Steward.
+    from cell.domain.objects import CriterionScore, Verdict
+    from cell.roles.reference import RefOrchestrator
+
+    store = InMemoryEventStore()
+    calls = {"n": 0}
+
+    class CountingExecutor:
+        actor = EXECUTOR
+
+        def execute(self, item):
+            calls["n"] += 1
+            return RefExecutor().execute(item)
+
+    class ReturnVerifier:
+        actor = ActorRef(role="Verifier", version="ref-v0")
+
+        def verify(self, output, goal):
+            return Verdict(id=f"v-{output.id}", output_id=output.id, decision="return",
+                           scores=[CriterionScore(criterion_id="c", result="unclear")],
+                           reason="revise", verified_by=self.actor, verified_at=_T0)
+
+    hb = CellHandbrake(director=RefDirector(), orchestrator=RefOrchestrator(),
+                       executor=CountingExecutor(), verifier=ReturnVerifier(),
+                       store=store, max_revisions=3)
+    verdict = hb.start(_ticket(), "f1")
+    assert verdict.decision == "return"
+    assert calls["n"] == 4  # initial attempt + 3 revisions
+
+
+# --- pr8 augment fixes -------------------------------------------------------
+
+def test_breakpoint_uses_the_registry_level_not_the_declared_one():
+    # A divergent orchestrator: an L1 action_class but a declared L3 authority_level must
+    # still pause -- the compiled registry, not the orchestrator's claim, decides (R2 / Art. 5.2).
+    from cell.planes.governance import RuleSetGovernance
+
+    class DivergentOrchestrator:
+        actor = ActorRef(role="Orchestrator", version="divergent")
+
+        def decompose(self, goal):
+            return [WorkItem(id=f"wi-{goal.id}", goal_id=goal.id, description="comment",
+                             assigned_to=EXECUTOR, action_class="CLASS_EXTERNAL_COMM",  # L1 in registry
+                             authority_level="L3",  # falsely claims fully-autonomous
+                             acceptance_criteria=list(goal.acceptance_criteria))]
+
+    store = InMemoryEventStore()
+    hb = CellHandbrake(director=RefDirector(), orchestrator=DivergentOrchestrator(),
+                       executor=RefExecutor(), verifier=RefVerifier(), store=store,
+                       governance=RuleSetGovernance())
+    result = hb.start(_ticket(), "f1")
+    assert isinstance(result, Paused)  # registry says L1 -> static breakpoint, not bypassed
+
+
+def test_resume_returns_the_latest_verdict_not_a_stale_one():
+    # With the revise loop an item can have multiple verify events; the resume idempotent
+    # guard must return the LATEST verdict, not the first (stale) one.
+    from cell.domain.objects import CriterionScore, Verdict
+
+    class FlakyVerifier:
+        actor = ActorRef(role="Verifier", version="ref-v0")
+
+        def __init__(self):
+            self.n = 0
+
+        def verify(self, output, goal):
+            self.n += 1
+            decision = "return" if self.n == 1 else "pass"
+            return Verdict(id=f"v{self.n}-{output.id}", output_id=output.id, decision=decision,
+                           scores=[CriterionScore(criterion_id="c", result="met")],
+                           reason="x", verified_by=self.actor, verified_at=_T0)
+
+    store = InMemoryEventStore()
+    hb = CellHandbrake(director=RefDirector(), orchestrator=L1Orchestrator(),
+                       executor=RefExecutor(), verifier=FlakyVerifier(),
+                       store=store)  # L1Orchestrator -> pauses
+    hb.start(_ticket(), "f1")
+    v1 = hb.resume("f1")  # loop: return then pass -> final pass (two verify events)
+    assert v1.decision == "pass"
+    v2 = hb.resume("f1")  # re-resume: guard must return the LATEST verdict (pass), not the first (return)
+    assert v2.decision == "pass"

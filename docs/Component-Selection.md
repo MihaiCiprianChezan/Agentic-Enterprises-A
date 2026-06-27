@@ -36,6 +36,12 @@ The M0 decision in one line: prove the wrapper against a plain SQLite events+eff
 | **Handbrake surface** | M4 | Pause notification + inspect/inject/resume operations for a human | CLI · a small web approval page · an inbox/queue | **CLI first** (lowest-friction, scriptable). The operations and guarantees are fixed (Handbrake §1); the surface is cosmetic and swappable. |
 | **Software-delivery surface** | M0→M2 | Ticket source, repo access, sandboxed test/build, PR creation | Your existing issue tracker + git host + CI + a sandbox | Whatever you already use. The cell attaches at the **edges** (build plan §1): read tickets, open PRs, never merge to protected branches (L0). |
 
+**The composition root is where the agent runtime binds.** The cell is assembled at one place
+(`cell/cell.py`) that wires the planes, roles, governance gate, ledger, trace, and Steward. A
+concrete agent runtime fills a Role by being passed to the assembler (e.g.
+`Cell.assemble(executor=…)`); it is invisible to every other component (invariant #1). The
+runtime choice is therefore deferred to that single seam, not threaded through the architecture.
+
 ---
 
 ## Two stack archetypes
