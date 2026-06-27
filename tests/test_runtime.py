@@ -26,9 +26,37 @@ from cell.runtime.runner import (
 
 
 def test_claude_preset_renders_argv():
-    argv = render_argv(CliAgentSpec.claude_code(), "do the thing")
-    assert argv[:3] == ["claude", "-p", "do the thing"]
-    assert "--permission-mode" in argv  # permission args appended for unattended runs
+    # The prompt is NOT an argv element (it goes on stdin); argv is the command + permission flags.
+    argv = render_argv(CliAgentSpec.claude_code())
+    assert argv == ["claude", "-p", "--permission-mode", "acceptEdits"]
+
+
+def test_runner_passes_the_prompt_on_stdin(tmp_path):
+    # The prompt must reach the agent via stdin (so a multi-line prompt can't be mangled by a
+    # Windows .CMD shim and the permission flags after it aren't dropped).
+    spec = CliAgentSpec(
+        argv_template=["python", "-c",
+                       "import sys, pathlib; pathlib.Path('got.txt').write_text(sys.stdin.read())"],
+        permission_args=[], instruction_file="X")
+    CliAgentRunner(spec).run("the real prompt", str(tmp_path))
+    assert (tmp_path / "got.txt").read_text() == "the real prompt"
+
+
+def test_runner_encodes_the_prompt_as_utf8_on_stdin(tmp_path):
+    # A non-ASCII prompt must reach the agent as UTF-8 regardless of the platform's locale
+    # codepage. The child reads raw bytes so the assertion is deterministic cross-platform.
+    spec = CliAgentSpec(
+        argv_template=["python", "-c",
+                       "import sys, pathlib; pathlib.Path('got.bin').write_bytes(sys.stdin.buffer.read())"],
+        permission_args=[], instruction_file="X")
+    CliAgentRunner(spec).run("café — slugify ✨", str(tmp_path))
+    assert (tmp_path / "got.bin").read_bytes() == "café — slugify ✨".encode("utf-8")
+
+
+def test_runner_raises_on_an_empty_argv_template(tmp_path):
+    spec = CliAgentSpec(argv_template=[], permission_args=[], instruction_file="X")
+    with pytest.raises(RunnerError):
+        CliAgentRunner(spec).run("x", str(tmp_path))
 
 
 def test_runner_runs_a_real_subprocess_in_cwd(tmp_path):

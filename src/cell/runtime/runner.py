@@ -12,6 +12,7 @@ default); adjust a preset's args at live time if a CLI changed.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import Callable, Protocol
@@ -36,31 +37,33 @@ class Runner(Protocol):
 @dataclass
 class CliAgentSpec:
     """What actually differs between CLI agents: how to invoke them headless, the flags that
-    let an unattended run proceed without hanging on approval, and the instruction-file name."""
-    argv_template: list[str]          # the literal "{prompt}" element is replaced by the prompt
+    let an unattended run proceed without hanging on approval, and the instruction-file name.
+    The prompt is delivered on stdin (not as an argv element), so a multi-line prompt can't be
+    mangled by a Windows .CMD shim and never appears in the process arg list."""
+    argv_template: list[str]          # the headless command + subcommand (no prompt — it's stdin)
     permission_args: list[str]        # appended; let an unattended run proceed (don't over-permit)
     instruction_file: str             # CLAUDE.md / AGENTS.md / .github/copilot-instructions.md
 
     @classmethod
     def claude_code(cls) -> "CliAgentSpec":
-        return cls(["claude", "-p", "{prompt}"], ["--permission-mode", "acceptEdits"], "CLAUDE.md")
+        return cls(["claude", "-p"], ["--permission-mode", "acceptEdits"], "CLAUDE.md")
 
     @classmethod
     def codex(cls) -> "CliAgentSpec":
-        return cls(["codex", "exec", "{prompt}"], ["--full-auto"], "AGENTS.md")
+        return cls(["codex", "exec"], ["--full-auto"], "AGENTS.md")
 
     @classmethod
     def gemini(cls) -> "CliAgentSpec":
-        return cls(["gemini", "-p", "{prompt}"], ["--yolo"], "GEMINI.md")
+        return cls(["gemini", "-p"], ["--yolo"], "GEMINI.md")
 
     @classmethod
     def pi(cls) -> "CliAgentSpec":
-        return cls(["pi", "{prompt}"], [], "AGENTS.md")
+        return cls(["pi"], [], "AGENTS.md")
 
 
-def render_argv(spec: CliAgentSpec, prompt: str) -> list[str]:
-    base = [prompt if arg == "{prompt}" else arg for arg in spec.argv_template]
-    return base + list(spec.permission_args)
+def render_argv(spec: CliAgentSpec) -> list[str]:
+    """The headless command + permission flags. The prompt is passed on stdin, not here."""
+    return list(spec.argv_template) + list(spec.permission_args)
 
 
 class CliAgentRunner:
@@ -72,9 +75,23 @@ class CliAgentRunner:
         self.timeout = timeout
 
     def run(self, prompt: str, cwd: str) -> RunResult:
-        argv = render_argv(self.spec, prompt)
+        argv = render_argv(self.spec)
+        if not argv:
+            raise RunnerError("CliAgentSpec has no command (empty argv_template)")
+        # Resolve the binary to a full path so subprocess finds it cross-platform — on Windows a
+        # CLI agent is often a PATHEXT shim (e.g. npm's claude.CMD) that the bare name won't
+        # resolve without a shell; shutil.which honours PATH + PATHEXT.
+        resolved = shutil.which(argv[0])
+        if resolved is None:
+            raise RunnerError(f"CLI agent binary not found: {argv[0]!r}")
+        argv = [resolved, *argv[1:]]
         try:
-            proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=self.timeout)
+            # The prompt goes on stdin so a multi-line prompt can't break a Windows .CMD shim's
+            # argument parsing (which would silently drop the permission flags after it). Encoding
+            # is pinned to UTF-8 so a non-ASCII prompt is stable across platforms (Windows text
+            # mode would otherwise use a locale codepage like cp1252).
+            proc = subprocess.run(argv, cwd=cwd, input=prompt, capture_output=True,
+                                  encoding="utf-8", timeout=self.timeout)
         except FileNotFoundError as exc:
             raise RunnerError(f"CLI agent binary not found: {argv[0]!r}") from exc
         except subprocess.TimeoutExpired as exc:
