@@ -27,6 +27,7 @@ from cell.domain.objects import ActorRef, BudgetCap, Output, Ticket, Verdict, Wo
 from cell.effects.wrapper import (
     ActionDescriptor,
     EffectsLedger,
+    GovernanceBlocked,
     GovernanceCheck,
     InMemoryEffectsLedger,
     make_idempotency_key,
@@ -227,6 +228,7 @@ class CellHandbrake:
         verdict: Optional[Verdict] = None
         while index < len(items):
             item = items[index]
+            self._govern(flow_id, item)  # R6 gate at the action site (logs allow/block)
             if item.authority_level in ("L0", "L1") or self._adhoc_hit(flow_id, item):
                 return self._pause(flow_id, ticket, index, item)
             verdict = self._do_item(flow_id, item, goal, None)
@@ -317,6 +319,22 @@ class CellHandbrake:
     def _adhoc_hit(self, flow_id, item) -> bool:
         targets = {f"pre-execute:{item.id}", "pre-execute"}
         return any(bp["step"] in targets for bp in self.list_breakpoints(flow_id))
+
+    def _govern(self, flow_id, item) -> None:
+        """R6: evaluate the work item's action against the compiled rules before it pauses or
+        executes, and log the allow/block decision (R12). A block stops it up front."""
+        actor = _actor_of(self.executor, "Executor")
+        action = ActionDescriptor(
+            id=f"gate-{item.id}", action_class=item.action_class, effect_kind="compensable",
+            idempotency_key=make_idempotency_key(flow_id, f"gate:{item.id}", {"wi": item.id}),
+            intent={"work_item_id": item.id})
+        allowed, reason = self.governance.evaluate(action, actor)
+        self.store.append(flow_id, "governance", actor, {
+            "stage": "gate", "decision": "allow" if allowed else "block",
+            "action_class": item.action_class, "authority_level": item.authority_level,
+            "reason": reason})
+        if not allowed:
+            raise GovernanceBlocked(reason)
 
     def _moves(self, level: str) -> list[str]:
         if level == "L0":

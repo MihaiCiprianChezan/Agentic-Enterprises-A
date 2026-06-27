@@ -258,3 +258,49 @@ def test_a_fresh_controller_resumes_from_the_durable_plane():
                           store=store, ledger=ledger)
     verdict = fresh.resume("f1")
     assert verdict.decision == "pass"
+
+
+def test_governance_gate_blocks_an_l0_work_item_up_front():
+    from cell.planes.governance import RuleSetGovernance
+    from cell.effects.wrapper import GovernanceBlocked
+
+    class L0Orchestrator:
+        actor = ActorRef(role="Orchestrator", version="l0")
+
+        def decompose(self, goal):
+            return [WorkItem(id=f"wi-{goal.id}", goal_id=goal.id, description="push",
+                             assigned_to=EXECUTOR, action_class="CLASS_HIGH_BLAST",
+                             authority_level="L0", acceptance_criteria=list(goal.acceptance_criteria))]
+
+    calls = {"n": 0}
+
+    class CountingExecutor:
+        actor = EXECUTOR
+
+        def execute(self, item):
+            calls["n"] += 1
+            return RefExecutor().execute(item)
+
+    store = InMemoryEventStore()
+    hb = CellHandbrake(director=RefDirector(), orchestrator=L0Orchestrator(),
+                       executor=CountingExecutor(), verifier=RefVerifier(), store=store,
+                       governance=RuleSetGovernance())
+    with pytest.raises(GovernanceBlocked):
+        hb.start(_ticket(), "f1")
+    assert calls["n"] == 0  # never executed
+    gate = [e for e in store.read("f1") if e.payload.get("stage") == "gate"]
+    assert gate and gate[-1].payload["decision"] == "block"
+    assert "Art. 4" in gate[-1].payload["reason"]  # the clause travels in the reason
+
+
+def test_governance_gate_allows_and_logs_an_l2_work_item():
+    from cell.planes.governance import RuleSetGovernance
+    from cell.roles.reference import RefOrchestrator
+    store = InMemoryEventStore()
+    hb = CellHandbrake(director=RefDirector(), orchestrator=RefOrchestrator(),
+                       executor=RefExecutor(), verifier=RefVerifier(), store=store,
+                       governance=RuleSetGovernance())
+    verdict = hb.start(_ticket(), "f1")
+    assert verdict.decision == "pass"
+    gate = [e for e in store.read("f1") if e.payload.get("stage") == "gate"]
+    assert gate and gate[-1].payload["decision"] == "allow"
