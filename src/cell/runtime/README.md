@@ -36,3 +36,8 @@ never part of CI and is never run by automated agents.
 Swap the spec: `CliAgentRunner(CliAgentSpec.codex())` (or `.gemini()` / `.pi()`). Those presets
 are config-ready and run through the same runner; confirm their flags on first use (CLIs evolve
 fast) and ensure that CLI is installed/authenticated. Claude Code is the live-verified default.
+
+## Inspecting a run afterwards
+After a live run, read its trajectory back from the durable state DB:
+`python -m cell.observe "<target>.cell-state.db" <flow_id>` (the live runner uses flow id
+`live-1`). See [Using-a-Cell.md](../../../docs/Using-a-Cell.md) §5.
