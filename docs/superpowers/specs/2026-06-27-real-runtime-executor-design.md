@@ -18,7 +18,9 @@ cell's M0 exactly-once guarantee proven on an actual irreversible side effect (n
 across a kill/resume).
 
 **Decisions carried from brainstorming:**
-- **Runtime:** Claude Code CLI in headless mode (`claude -p`).
+- **Runtime:** CLI agentic coding tools as a *class* — one runner parameterized by a per-tool
+  spec — with **Claude Code** (`claude -p`) the primary/default. (SDK/custom agents are a
+  later, separate seam.)
 - **Target:** a fresh, minimal, disposable sandbox repo with one seeded failing test.
 - **Realness:** a real PR is opened on the sandbox repo (the cell never merges — L0).
 - **Approach 1 (faithful split):** the agent *produces the artifact*; the cell *performs the
@@ -56,13 +58,33 @@ A fresh minimal Python package pushed to the user's GitHub: a stub function + a 
 `pytest` test that fully specifies it (the "ticket": *implement `slugify()` so its test
 passes*). Disposable; the demo's blast radius is one PR on this repo.
 
-### 3.2 `Runner` Protocol + two implementers (`src/cell/runtime/runner.py`)
+### 3.2 `Runner` Protocol + a parameterized CLI-agent runner (`src/cell/runtime/runner.py`)
+CLI agentic coding tools have converged on one integration shape: a **headless prompt
+invocation** (`claude -p`, `codex exec`, `gemini -p`, …), **autonomous editing of the local
+checkout**, and a **project instruction file** they read (CLAUDE.md / AGENTS.md /
+copilot-instructions.md). They differ only in flags, the instruction-file name, and how they
+bypass interactive approval — *config, not architecture*. So we model "CLI agent" as the class,
+not each tool:
+
 - `Runner` Protocol: `run(prompt: str, cwd: str) -> RunResult` (invariant #1 — the executor
   binds to this, not to a concrete CLI).
-- `ClaudeCodeRunner` — shells out to `claude -p <prompt>` in `cwd` (headless), returns its
-  result. Thin: build argv, run, capture stdout/exit.
-- `FakeRunner` — deterministic; writes a canned change into `cwd` and returns success. For
-  offline unit tests.
+- **`CliAgentSpec`** — the small config that captures what actually differs between tools:
+  `argv_template` (e.g. `["claude","-p","{prompt}"]`), `permission_args` (the flags that let an
+  *unattended* run proceed without hanging on approval — and without over-permitting), and
+  `instruction_file`. Presets are a few lines each: `claude_code()` (default/primary),
+  `codex()`, `gemini()`, `pi()`.
+- **`CliAgentRunner`** — one runner driven by a `CliAgentSpec`: render argv, run in `cwd`,
+  capture stdout/exit. **Athletic robustness (required, per the landscape's known pitfalls):**
+  surface a non-zero exit, an empty/no-op result, and a missing binary clearly; respect a
+  timeout; and **never put secrets in the prompt** (prompt-as-transcript leakage). Adding a new
+  CLI agent = a new `CliAgentSpec` preset, not a new class.
+- `FakeRunner` — deterministic; writes a canned change into `cwd` and returns success. The
+  offline test implementer; also the standing proof that the `Runner` seam admits non-Claude
+  runtimes.
+
+**Out of scope here:** SDK/custom (non-CLI) agents — a different, later seam; and cloud/
+PR-centric agents (e.g. the GitHub Copilot *coding agent*) that open PRs themselves, which would
+bypass the cell's `perform()` (a non-`Runner` integration shape).
 
 ### 3.3 `RealExecutor` (`src/cell/runtime/real_executor.py`) — implements `Executor`
 `execute(item) -> Output`, and only: (1) build a prompt from `item.description` +
@@ -92,7 +114,7 @@ Opt-in, env-gated (`CELL_LIVE=1`). Assembles the cell with the real executor/ver
 
 ```
 ticket (sandbox) → RefDirector → Goal → RefOrchestrator → one WorkItem (CLASS_OWN_WRITE, L2)
-  → RealExecutor (claude -p edits the branch) → Output(diff, branch)
+  → RealExecutor (the configured CLI agent, default claude -p, edits the branch) → Output(diff, branch)
   → RealVerifier (pytest) → Verdict
       pass  → live runner: perform(open-PR) [durable, idempotent] → PR URL → hand to human review
       return→ stop (the demo reports the failing tests)
