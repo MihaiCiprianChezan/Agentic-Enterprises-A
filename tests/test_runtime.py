@@ -5,10 +5,16 @@ repos / fake effects stand in for the real CLI agent, gh, and sandbox repo. No L
 from __future__ import annotations
 
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
+from cell.cell import Cell
+from cell.domain.objects import ActorRef, BudgetCap, Criterion, CriterionScore, Goal, Output, Verdict, WorkItem
+from cell.runtime.deliver import deliver_on_pass
+from cell.runtime.real_executor import ExecutorError, RealExecutor
+from cell.runtime.real_verifier import RealVerifier
 from cell.runtime.runner import (
     CliAgentRunner,
     CliAgentSpec,
@@ -62,12 +68,6 @@ def test_fake_runner_applies_the_change(tmp_path):
     assert (tmp_path / "f.txt").read_text() == "x"
 
 
-from datetime import datetime, timezone
-
-from cell.domain.objects import ActorRef, Criterion, WorkItem
-from cell.runtime.real_executor import ExecutorError, RealExecutor
-
-
 def _init_repo(path: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=path, check=True)
     Path(path, "README.md").write_text("seed\n")
@@ -111,10 +111,6 @@ def test_real_executor_raises_on_agent_failure(tmp_path):
         RealExecutor(FailingRunner(), str(tmp_path), "feat/wi-1").execute(_work_item())
 
 
-from cell.domain.objects import BudgetCap, CriterionScore, Goal, Output, Verdict
-from cell.runtime.real_verifier import RealVerifier
-
-
 def _goal() -> Goal:
     return Goal(id="g-1", ticket_id="t-1", outcome="x",
                 acceptance_criteria=[Criterion(id="c1", statement="tests pass", kind="test")],
@@ -140,10 +136,6 @@ def test_real_verifier_returns_on_red_tests(tmp_path):
     verdict = RealVerifier(str(tmp_path)).verify(_output(), _goal())
     assert verdict.decision == "return"
     assert "fail" in verdict.reason.lower()
-
-
-from cell.cell import Cell
-from cell.runtime.deliver import deliver_on_pass
 
 
 def test_deliver_opens_a_pr_through_perform():
@@ -183,3 +175,18 @@ def test_live_is_opt_in(capsys, monkeypatch):
     live.main()
     out = capsys.readouterr().out
     assert "opt-in" in out.lower()
+
+
+def test_real_verifier_returns_when_the_runner_is_missing(tmp_path):
+    Path(tmp_path, "test_ok.py").write_text("def test_ok():\n    assert True\n")
+    verdict = RealVerifier(str(tmp_path),
+                           test_cmd=("definitely-not-a-real-binary-zzz",)).verify(_output(), _goal())
+    assert verdict.decision == "return"
+    assert "not found" in verdict.reason.lower()
+
+
+def test_real_verifier_returns_on_timeout(tmp_path):
+    verdict = RealVerifier(str(tmp_path), test_cmd=("python", "-c", "import time; time.sleep(5)"),
+                           timeout=1).verify(_output(), _goal())
+    assert verdict.decision == "return"
+    assert "timed out" in verdict.reason.lower()

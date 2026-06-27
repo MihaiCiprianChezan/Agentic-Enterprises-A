@@ -13,7 +13,7 @@ default); adjust a preset's args at live time if a CLI changed.
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Protocol
 
 

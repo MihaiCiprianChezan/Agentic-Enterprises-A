@@ -21,8 +21,10 @@ never part of CI and is never run by automated agents.
    ```bash
    CELL_LIVE=1 CELL_TARGET_DIR=/path/to/cell-sandbox \
      CELL_TASK="Implement slugify() in src/... so tests/test_slug.py passes." \
+     CELL_BRANCH="cell/slice" \
      python -m cell.live
    ```
+   (`CELL_BRANCH` is optional; defaults to `cell/slice` — the working branch name.)
 5. **Result:** the agent edits a branch, the cell runs the tests, and on green it prints the PR
    URL. Re-running (or resuming after a kill) opens **no** second PR — the `perform()`/durable
    ledger guarantee on a real GitHub side effect.

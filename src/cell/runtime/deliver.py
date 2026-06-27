@@ -33,7 +33,8 @@ def deliver_on_pass(cell, flow_id: str, branch: str, *, actor: ActorRef, title: 
     """Open the PR for `branch` exactly-once via the cell's wrapper. Call only on a pass verdict."""
     key = make_idempotency_key(flow_id, "open_pr", {"branch": branch})
     action = ActionDescriptor(
-        id=f"deliver-{branch}", action_class="CLASS_VISIBLE_OUTPUT", effect_kind="compensable",
+        id=f"deliver-{flow_id}-{branch}", action_class="CLASS_VISIBLE_OUTPUT",
+        effect_kind="compensable",  # a PR is closeable, so compensable (not irreversible)
         idempotency_key=key,
         intent={"branch": branch, "title": title, "body": body, "repo_dir": repo_dir})
     return perform(action, actor, lambda a: effect(a.intent), cell.ledger, cell.governance)

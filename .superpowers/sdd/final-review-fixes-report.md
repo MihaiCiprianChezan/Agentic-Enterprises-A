@@ -1,4 +1,65 @@
-# Final Review Fixes Report
+# Final Review Fixes Report (sub-project B batch)
+
+Date: 2026-06-27
+
+## Fixes Applied
+
+### Fix 1 — remove unused `field` import (runner.py)
+File: `src/cell/runtime/runner.py`
+Changed `from dataclasses import dataclass, field` → `from dataclasses import dataclass`.
+`field` was imported but never used.
+
+### Fix 2 — consolidate test imports to top block (test_runtime.py)
+File: `tests/test_runtime.py`
+Moved all mid-file imports (`datetime`, `timezone`, `ActorRef`, `BudgetCap`, `Criterion`,
+`CriterionScore`, `Goal`, `Output`, `Verdict`, `WorkItem`, `ExecutorError`, `RealExecutor`,
+`RealVerifier`, `Cell`, `deliver_on_pass`) to the single import block at the top.
+Removed the now-empty mid-file import lines. No duplicate names remain.
+
+### Fix 3 — add two RealVerifier robustness tests (test_runtime.py)
+File: `tests/test_runtime.py`
+Appended `test_real_verifier_returns_when_the_runner_is_missing` and
+`test_real_verifier_returns_on_timeout`. Both exercise existing error paths in
+`RealVerifier._run_tests` (`FileNotFoundError` and `TimeoutExpired`) and assert
+the verdict decision and reason text.
+
+### Fix 4 — flow-scope the delivery action id + document compensable (deliver.py)
+File: `src/cell/runtime/deliver.py`
+Changed `id=f"deliver-{branch}"` → `id=f"deliver-{flow_id}-{branch}"` so the idempotency
+key is scoped to the flow, not just the branch name.
+Added comment `# a PR is closeable, so compensable (not irreversible)` on the `effect_kind` line.
+
+### Fix 5 — document CELL_BRANCH env var (runtime/README.md)
+File: `src/cell/runtime/README.md`
+Added `CELL_BRANCH="cell/slice"` to the env example in "Running the live slice" and a note
+that it is optional with default `cell/slice`.
+
+## Commands Run and Output
+
+### Covering suite (test_runtime.py)
+```
+python -m pytest tests/test_runtime.py -o addopts="" -q
+```
+Output:
+```
+................                                                         [100%]
+16 passed in 5.22s
+```
+
+### Full suite
+```
+python -m pytest -o addopts="" -q
+```
+Output:
+```
+........................................................................[ 58%]
+....................................................                     [100%]
+124 passed in 6.29s
+```
+
+---
+
+# Final Review Fixes Report (sub-project A batch — prior session)
 
 Date: 2026-06-27
 
