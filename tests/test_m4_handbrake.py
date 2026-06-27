@@ -188,6 +188,63 @@ def test_replay_reconstructs_without_refiring():
 
 # --- durable resume across a fresh controller (simulated restart) ------------
 
+# --- review fixes -----------------------------------------------------------
+
+def test_ad_hoc_breakpoint_pauses_an_otherwise_l2_flow():
+    from cell.roles.reference import RefOrchestrator
+    store = InMemoryEventStore()
+    hb = CellHandbrake(director=RefDirector(), orchestrator=RefOrchestrator(),
+                       executor=RefExecutor(), verifier=RefVerifier(), store=store)
+    bp_id = hb.set_breakpoint("f1", "pre-execute", "static")
+    assert [b["id"] for b in hb.list_breakpoints("f1")] == [bp_id]
+
+    result = hb.start(_ticket(), "f1")
+    assert isinstance(result, Paused)  # the ad-hoc breakpoint paused an L2 flow
+
+    hb.clear_breakpoint("f1", bp_id)
+    assert hb.list_breakpoints("f1") == []
+
+
+def test_injection_payload_cannot_override_event_stage():
+    store = InMemoryEventStore()
+    hb = _handbrake(store=store)
+    hb.start(_ticket(), "f1")
+    human = ActorRef(role="Executor", version="human:alice", mode="human")
+    hb.inject("f1", {"type": "add_context", "stage": "EVIL"}, human)
+    inj = next(e for e in store.read("f1") if e.kind == "injection")
+    assert inj.payload["stage"] == "inject"
+
+
+def test_injection_is_tagged_with_its_work_item():
+    store = InMemoryEventStore()
+    hb = _handbrake(store=store)
+    paused = hb.start(_ticket(), "f1")
+    human = ActorRef(role="Executor", version="human:alice", mode="human")
+    hb.inject("f1", {"type": "add_context"}, human)
+    inj = next(e for e in store.read("f1") if e.kind == "injection")
+    assert inj.payload["work_item_id"] == paused.pending_action["work_item_id"]
+
+
+def test_checkpoint_at_seq_points_at_the_breakpoint_event():
+    store = InMemoryEventStore()
+    hb = _handbrake(store=store)
+    hb.start(_ticket(), "f1")
+    cp = store.latest_checkpoint("f1")
+    bp_event = next(e for e in store.read("f1") if e.kind == "breakpoint")
+    assert cp.at_seq == bp_event.seq
+
+
+def test_resume_records_the_effect_audit_event_before_completion():
+    store = InMemoryEventStore()
+    ledger = InMemoryEffectsLedger()
+    hb = _handbrake(store=store, ledger=ledger)
+    hb.start(_ticket(), "f1")
+    hb.resume("f1")
+    # perform() was given the store, so the effect's action Event is on the durable plane
+    # (written before the ledger is marked completed — the R12 ordering).
+    assert any("idempotency_key" in e.payload for e in store.read("f1"))
+
+
 def test_a_fresh_controller_resumes_from_the_durable_plane():
     store = InMemoryEventStore()
     ledger = InMemoryEffectsLedger()

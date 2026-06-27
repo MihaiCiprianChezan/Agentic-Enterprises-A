@@ -85,9 +85,15 @@ def _ticket_from_dict(d: dict[str, Any]) -> Ticket:
                   raw_refs=list(d.get("raw_refs", [])))
 
 
+_CONTROL = ActorRef(role="Handbrake", version="control")  # attribution for ad-hoc breakpoints
+
+
 class CellHandbrake:
-    """Concrete Handbrake over the one flow. Satisfies the control.Handbrake interface and
-    adds `start` to open a flow."""
+    """Concrete Handbrake over the one flow. Implements the five control primitives
+    (Handbrake §1) — including the ad-hoc breakpoint operations of the control.Handbrake
+    Protocol — plus `start` to open a flow. `inspect`/`resume` intentionally return richer,
+    typed results (`Briefing`, `Verdict | Paused`) than the placeholder Protocol's loose
+    `dict` / `None`, so callers get legible structures rather than untyped maps."""
 
     def __init__(self, *, director: Director, orchestrator: Orchestrator,
                  executor: Executor, verifier: Verifier, store: EventStore,
@@ -107,6 +113,33 @@ class CellHandbrake:
         self.max_revisions = max_revisions
 
     # -- primitives -----------------------------------------------------------
+
+    def set_breakpoint(self, flow_id: str, step: str, kind: str = "static",
+                       condition: Optional[str] = None) -> str:
+        """Declare an ad-hoc breakpoint (Handbrake §1.1) — a human may add one to any flow
+        at any time. A breakpoint whose `step` matches an item's pre-execute point pauses it
+        even if its authority class would not (static breakpoints already cover L1/L0)."""
+        existing = [e for e in self.store.read(flow_id)
+                    if e.payload.get("stage") == "set_breakpoint"]
+        bp_id = f"bp-{len(existing) + 1}"
+        self.store.append(flow_id, "breakpoint", _CONTROL,
+                          {"stage": "set_breakpoint", "bp_id": bp_id, "step": step,
+                           "kind": kind, "condition": condition})
+        return bp_id
+
+    def list_breakpoints(self, flow_id: str) -> list[dict[str, Any]]:
+        active: dict[str, dict[str, Any]] = {}
+        for e in self.store.read(flow_id):
+            p = e.payload
+            if p.get("stage") == "set_breakpoint":
+                active[p["bp_id"]] = {"id": p["bp_id"], "step": p["step"], "kind": p["kind"]}
+            elif p.get("stage") == "clear_breakpoint":
+                active.pop(p["bp_id"], None)
+        return list(active.values())
+
+    def clear_breakpoint(self, flow_id: str, bp_id: str) -> None:
+        self.store.append(flow_id, "breakpoint", _CONTROL,
+                          {"stage": "clear_breakpoint", "bp_id": bp_id})
 
     def start(self, ticket: Ticket, flow_id: str) -> Union[Verdict, Paused]:
         tracer = self._tracer(flow_id)
@@ -155,8 +188,12 @@ class CellHandbrake:
                 raise InjectionRefused(
                     f"{action_class} ({injected_level}) exceeds the assumed Role's seat ({seat_level})"
                 )
-        # Recorded as a tracked variant of the run (model §5), to be consumed by resume.
-        self.store.append(flow_id, "injection", actor, {"stage": "inject", **value})
+        # Recorded as a tracked variant of the run (model §5), scoped to the paused work
+        # item so a later pause never consumes a stale injection. `stage`/`work_item_id`
+        # are set last so a crafted payload cannot override them.
+        self.store.append(flow_id, "injection", actor,
+                          {**value, "stage": "inject",
+                           "work_item_id": cp.pending_action.get("work_item_id")})
 
     def resume(self, flow_id: str) -> Union[Verdict, Paused]:
         cp = self._require_checkpoint(flow_id)
@@ -166,7 +203,8 @@ class CellHandbrake:
         items = self.orchestrator.decompose(goal)
         self.store.append(flow_id, "decision", _actor_of(self.orchestrator, "Orchestrator"),
                           {"stage": "resume", "index": index})
-        verdict = self._do_item(flow_id, items[index], goal, self._latest_injection(flow_id))
+        item = items[index]
+        verdict = self._do_item(flow_id, item, goal, self._latest_injection(flow_id, item.id))
         if verdict.decision != "pass" or index + 1 >= len(items):
             return verdict
         return self._advance(flow_id, ticket, goal, items, index + 1)
@@ -189,7 +227,7 @@ class CellHandbrake:
         verdict: Optional[Verdict] = None
         while index < len(items):
             item = items[index]
-            if item.authority_level in ("L0", "L1"):
+            if item.authority_level in ("L0", "L1") or self._adhoc_hit(flow_id, item):
                 return self._pause(flow_id, ticket, index, item)
             verdict = self._do_item(flow_id, item, goal, None)
             if verdict.decision != "pass":
@@ -202,10 +240,10 @@ class CellHandbrake:
         reason = f"static breakpoint before {item.authority_level} action (Art. 5.2)"
         pending = {"kind": "execute", "work_item_id": item.id, "action_class": item.action_class,
                    "authority_level": item.authority_level, "reason": reason}
-        self.store.append(flow_id, "breakpoint", item.assigned_to,
-                          {"stage": "breakpoint", "work_item_id": item.id, "reason": reason})
+        bp_event = self.store.append(flow_id, "breakpoint", item.assigned_to,
+                                     {"stage": "breakpoint", "work_item_id": item.id, "reason": reason})
         self.store.checkpoint(Checkpoint(
-            flow_id=flow_id, at_seq=len(self.store.read(flow_id)),
+            flow_id=flow_id, at_seq=bp_event.seq,
             step=f"pre-execute:{item.id}",
             state_snapshot={"ticket": _ticket_to_dict(ticket), "index": index},
             created_at=_now(), pending_action=pending,
@@ -235,7 +273,8 @@ class CellHandbrake:
                                   effect_kind="compensable", idempotency_key=key,
                                   intent={"output_id": output.id})
         perform(action, _actor_of(self.executor, "Executor"),
-                lambda _a: output.artifact_ref, self.ledger, self.governance)
+                lambda _a: output.artifact_ref, self.ledger, self.governance,
+                store=self.store, flow_id=flow_id)
 
         self.store.append(flow_id, "action", output.produced_by,
                           {"stage": "execute", "output_id": output.id,
@@ -265,13 +304,19 @@ class CellHandbrake:
                        scores=[], reason="(reconstructed from the durable trail)",
                        verified_by=verify.actor, verified_at=verify.at)
 
-    def _latest_injection(self, flow_id) -> Optional[dict[str, Any]]:
-        events = self.store.read(flow_id)
-        inj = next((e for e in reversed(events) if e.kind == "injection"), None)
-        if inj is None:
-            return None
-        value = {k: v for k, v in inj.payload.items() if k != "stage"}
-        return {"value": value, "actor": inj.actor}
+    def _latest_injection(self, flow_id, work_item_id) -> Optional[dict[str, Any]]:
+        # Only an injection made against *this* work item is consumed (never a stale one
+        # from an earlier pause).
+        for e in reversed(self.store.read(flow_id)):
+            if e.kind == "injection" and e.payload.get("work_item_id") == work_item_id:
+                value = {k: v for k, v in e.payload.items()
+                         if k not in ("stage", "work_item_id")}
+                return {"value": value, "actor": e.actor}
+        return None
+
+    def _adhoc_hit(self, flow_id, item) -> bool:
+        targets = {f"pre-execute:{item.id}", "pre-execute"}
+        return any(bp["step"] in targets for bp in self.list_breakpoints(flow_id))
 
     def _moves(self, level: str) -> list[str]:
         if level == "L0":
