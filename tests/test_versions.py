@@ -15,10 +15,13 @@ _T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 class _Impl:
-    def __init__(self, version: str) -> None:
+    def __init__(self, version: str, boom: bool = False) -> None:
         self.actor = ActorRef("Executor", version)
+        self._boom = boom
 
     def execute(self, item):
+        if self._boom:
+            raise RuntimeError("boom")
         return Output(id=f"out-{item.id}", work_item_id=item.id, artifact_ref="branch:x",
                       produced_by=self.actor, trace_ref="t://x", produced_at=_T0,
                       cost=CostDelta(compute=5))
@@ -38,9 +41,41 @@ def test_register_and_status_round_trip():
     reg = VersionRegistry(InMemoryEventStore())
     reg.register("Executor", "exec-v1")
     assert reg.status_of("exec-v1") == "active"
-    assert reg.records()["exec-v1"].role == "Executor"
+    assert reg.records()[("Executor", "exec-v1")].role == "Executor"
     reg.set_status("exec-v1", "suspended")
     assert reg.status_of("exec-v1") == "suspended"
+
+
+def test_records_disambiguate_roles_that_share_a_version_string():
+    # The reference roles all use "ref-v0" — they are distinct versions and must not collapse.
+    reg = VersionRegistry(InMemoryEventStore())
+    reg.register("Director", "ref-v0")
+    reg.register("Executor", "ref-v0")
+    recs = reg.records()
+    assert ("Director", "ref-v0") in recs and ("Executor", "ref-v0") in recs
+
+
+def test_runs_counts_executes_even_without_attributed_cost():
+    store = InMemoryEventStore()
+    E = lambda v: ActorRef("Executor", v)
+    store.append("f", "action", E("v1"), {"stage": "execute", "output_id": "o1", "implementer": "v1"})
+    store.append("f", "verdict", E("ref"), {"stage": "verify", "output_id": "o1", "decision": "pass"})
+    stats = version_stats(store.all_events())
+    assert stats["v1"].runs == 1 and stats["v1"].passes == 1   # a run with no cost still counts
+
+
+def test_resume_reroutes_away_from_a_now_suspended_version():
+    store = InMemoryEventStore()
+    boom = [Implementer("cheap", 1, _Impl("cheap", boom=True), 1.0),
+            Implementer("pricey", 1, _Impl("pricey"), 9.0)]
+    import pytest as _pt
+    with _pt.raises(RuntimeError):
+        Cell.assemble(store=store, optimizer=CostAwareOptimizer(), implementers=boom).submit(_ticket(), "f")
+    cell = _two_impl_cell(store)                 # re-enter with cheap working
+    cell.registry.set_status("cheap", "suspended")   # but cheap is now suspended
+    cell.submit(_ticket(), "f")
+    execs = [e for e in store.read("f") if e.payload.get("stage") == "execute"]
+    assert execs[-1].payload.get("implementer") == "pricey"   # re-routed off the suspended version
 
 
 def test_status_of_defaults_active_for_a_version_never_registered():
@@ -82,7 +117,8 @@ def test_version_stats_scores_runs_outcomes_and_cost_per_version():
 def test_assemble_registers_wired_implementer_versions_as_active():
     cell = _two_impl_cell(InMemoryEventStore())
     recs = cell.versions()
-    assert recs["cheap"].status == "active" and recs["pricey"].status == "active"
+    assert recs[("Executor", "cheap")].status == "active"
+    assert recs[("Executor", "pricey")].status == "active"
 
 
 def test_optimizer_skips_a_suspended_version():

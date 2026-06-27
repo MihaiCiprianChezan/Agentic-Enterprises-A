@@ -299,10 +299,12 @@ class CellHandbrake:
                       if e.payload.get("stage") == "route" and e.payload.get("work_item_id") == item.id),
                      None)
         if prior is not None:
-            chosen = by_id.get(prior.payload["chosen"])   # resume/retry: reuse the recorded choice
-            if chosen is not None:
+            chosen = by_id.get(prior.payload["chosen"])   # resume/retry: reuse the recorded choice…
+            active = chosen is not None and (self.registry is None
+                                             or self.registry.status_of(chosen.id) == "active")
+            if active:
                 return chosen.executor, chosen.id
-            return self.executor, None   # recorded implementer is gone (re-assembled) — degrade, don't crash
+            # …unless it is gone (re-assembled) or now suspended — re-route below instead of reusing it
         # Only route to active versions — a rolled_back/suspended version is never chosen (the
         # Auditor's suspension lever, M9). No active candidate clears the floor → escalate.
         candidates = [im for im in self.implementers

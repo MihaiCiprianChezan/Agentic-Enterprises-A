@@ -166,7 +166,7 @@ Now built (`cell/versions.py`): the registry is **event-sourced** on a reserved 
 so it is durable, hash-chained, and auditable like any plane state. Multiple versions of a role may
 run; each is registered with a status. The **Optimizer respects status** — it never routes to a
 non-`active` (rolled_back / suspended) version (`suspended` is the Auditor's lever, M9). Per-version
-field outcome + cost is scored by `version_stats` (runs / pass / return / block / mean cost) — the
+field outcome + cost is scored by `version_stats` (runs / pass / return / mean cost) — the
 raw signal the Auditor (M9) will rate. The Auditor itself (ratings, suspension *policy*, the
 human-response SLA) is still deferred (Constitution Art. 3.4).
 
