@@ -109,8 +109,16 @@ in-code run writes wherever you pointed `DurableEventStore`. The inspector print
   tally, each performed effect with its result (and exactly-once confirmation from the ledger), the
   total cost, and the chain-integrity verdict.
 
+The **total cost is real**: every step records its measured wall-clock, and the execute step also
+carries the runtime's reported token usage when it provides it (claude reports tokens via
+`--output-format json`; other CLI presets report wall-clock only until a usage parser is added).
+
 It reads the **durable event plane**, not the in-memory trace store (which doesn't survive the
 process), and a tampered record is surfaced loudly (`chain: ✗ BROKEN at seq N`) rather than hidden.
+
+Re-running a `flow_id` is safe — `cell.submit` on an existing flow **resumes** it (a completed flow
+returns its recorded verdict and adds nothing; a crashed one continues from where it stopped without
+duplicating its plan).
 
 ## Where to go next
 

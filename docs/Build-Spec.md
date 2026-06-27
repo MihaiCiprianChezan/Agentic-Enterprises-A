@@ -82,6 +82,7 @@ Output {
   side_effects: [EffectRecord]   # every external effect performed, with its idempotency key (§4)
   trace_ref: string              # pointer into the Observability plane
   produced_at: timestamp
+  cost: CostDelta?               # what producing it cost (e.g. a runtime's token usage); §3
 }
 ```
 
@@ -190,7 +191,7 @@ Session-level trajectories, not log lines (model §5). Every role emits spans fo
 ```
 CostDelta { compute: number, wall_clock_ms: number, human_time_ms?: number, units: string }
 ```
-- **Rule C1 (attribution).** Every Event and TraceSpan carries the cost attributable to it; a Goal's running cost is the sum of its events' `cost`. (Constitution Art. 6.3 defines what counts; default = compute + wall-clock.)
+- **Rule C1 (attribution).** Every Event and TraceSpan carries the cost attributable to it; a Goal's running cost is the sum of its events' `cost`. (Constitution Art. 6.3 defines what counts; default = compute + wall-clock.) Cost is **measured**, not estimated: each step's span records its actual wall-clock, and `compute` carries a runtime's reported usage (e.g. claude token counts via `Output.cost`) when available. An injectable `cost_model` remains an optional overlay (modeled/priced cost) but is not the source.
 - **Rule C2 (cap).** When a Goal's running cost reaches `Goal.budget_cap`, the flow must escalate/quarantine and may not proceed (→ governance rule R7, §5).
 
 ---

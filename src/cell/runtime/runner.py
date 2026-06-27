@@ -12,10 +12,13 @@ default); adjust a preset's args at live time if a CLI changed.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from dataclasses import dataclass
-from typing import Callable, Protocol
+from typing import Callable, Optional, Protocol
+
+from cell.planes.memory import CostDelta
 
 
 @dataclass
@@ -24,6 +27,21 @@ class RunResult:
     stdout: str
     stderr: str
     timed_out: bool = False
+    cost: Optional[CostDelta] = None   # the runtime's reported usage (tokens), if its spec parses it
+
+
+def _claude_usage(stdout: str) -> Optional[CostDelta]:
+    """Parse token usage from `claude --output-format json`. Best-effort: returns None on any parse
+    failure (the run still works on wall-clock). The exact field path is live-verified on first use."""
+    try:
+        data = json.loads(stdout)
+    except (ValueError, TypeError):
+        return None
+    usage = data.get("usage") if isinstance(data, dict) else None
+    if not isinstance(usage, dict):
+        return None
+    tokens = (usage.get("input_tokens") or 0) + (usage.get("output_tokens") or 0)
+    return CostDelta(compute=float(tokens), units="tokens") if tokens else None
 
 
 class RunnerError(Exception):
@@ -43,10 +61,13 @@ class CliAgentSpec:
     argv_template: list[str]          # the headless command + subcommand (no prompt — it's stdin)
     permission_args: list[str]        # appended; let an unattended run proceed (don't over-permit)
     instruction_file: str             # CLAUDE.md / AGENTS.md / .github/copilot-instructions.md
+    usage_parser: Optional[Callable[[str], Optional[CostDelta]]] = None  # stdout -> token cost
 
     @classmethod
     def claude_code(cls) -> "CliAgentSpec":
-        return cls(["claude", "-p"], ["--permission-mode", "acceptEdits"], "CLAUDE.md")
+        # --output-format json so token usage can be parsed back into the cost (see _claude_usage).
+        return cls(["claude", "-p"], ["--permission-mode", "acceptEdits", "--output-format", "json"],
+                   "CLAUDE.md", usage_parser=_claude_usage)
 
     @classmethod
     def codex(cls) -> "CliAgentSpec":
@@ -97,7 +118,11 @@ class CliAgentRunner:
         except subprocess.TimeoutExpired as exc:
             return RunResult(returncode=124, stdout=exc.stdout or "", stderr=exc.stderr or "",
                              timed_out=True)
-        return RunResult(returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
+        cost = None
+        if proc.returncode == 0 and self.spec.usage_parser is not None:
+            cost = self.spec.usage_parser(proc.stdout or "")
+        return RunResult(returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr,
+                         cost=cost)
 
 
 class FakeRunner:

@@ -101,7 +101,7 @@ class CellHandbrake:
                  ledger: Optional[EffectsLedger] = None,
                  governance: Optional[GovernanceCheck] = None,
                  recorder: Optional[TraceStore] = None, cost_model=None,
-                 max_revisions: int = 2) -> None:
+                 max_revisions: int = 2, clock=None) -> None:
         self.director = director
         self.orchestrator = orchestrator
         self.executor = executor
@@ -112,6 +112,7 @@ class CellHandbrake:
         self.recorder = recorder
         self.cost_model = cost_model
         self.max_revisions = max_revisions
+        self.clock = clock
 
     # -- primitives -----------------------------------------------------------
 
@@ -143,19 +144,41 @@ class CellHandbrake:
                           {"stage": "clear_breakpoint", "bp_id": bp_id})
 
     def start(self, ticket: Ticket, flow_id: str) -> Union[Verdict, Paused]:
+        if self.store.read(flow_id):
+            return self._reenter(flow_id, ticket)  # re-invocation resumes, never re-derives the prefix
         tracer = self._tracer(flow_id)
-        with tracer.span("specify", _actor_of(self.director, "Director"), "decision"):
+        with tracer.span("specify", _actor_of(self.director, "Director"), "decision") as h:
             goal = self.director.specify(ticket)
         self.store.append(flow_id, "decision", goal.created_by,
                           {"stage": "specify", "goal_id": goal.id, "in_purpose": goal.in_purpose},
-                          cost=self._ecost("specify"))
+                          cost=h.cost)
         orch = _actor_of(self.orchestrator, "Orchestrator")
-        with tracer.span("decompose", orch, "decision"):
+        with tracer.span("decompose", orch, "decision") as h:
             items = self.orchestrator.decompose(goal)
         self.store.append(flow_id, "decision", orch,
                           {"stage": "decompose", "work_items": [i.id for i in items]},
-                          cost=self._ecost("decompose"))
+                          cost=h.cost)
         return self._advance(flow_id, ticket, goal, items, 0)
+
+    def _reenter(self, flow_id: str, ticket: Ticket) -> Union[Verdict, Paused]:
+        """Re-invoking start() on an existing flow resumes it instead of re-deriving the prefix: a
+        completed flow returns its recorded verdict (no new events); a crashed flow reuses the
+        recorded specify/decompose prefix and continues from its first unfinished work item. Relies
+        on deterministic specify/decompose (as resume()/inspect() already do)."""
+        goal = self.director.specify(ticket)
+        items = self.orchestrator.decompose(goal)
+        index = 0
+        for i, item in enumerate(items):
+            verdict = self._existing_verdict(flow_id, item)
+            if verdict is not None and verdict.decision == "pass":
+                index = i + 1
+            else:
+                break
+        if items and index >= len(items):
+            return self._existing_verdict(flow_id, items[-1])  # completed: return verdict, append nothing
+        self.store.append(flow_id, "decision", _actor_of(self.orchestrator, "Orchestrator"),
+                          {"stage": "reenter", "index": index})
+        return self._advance(flow_id, ticket, goal, items, index)
 
     def inspect(self, flow_id: str) -> Briefing:
         cp = self._require_checkpoint(flow_id)
@@ -272,14 +295,17 @@ class CellHandbrake:
             if pending is not None:
                 output, pending = pending, None
             else:
+                exec_cost = None
                 if injection is not None and injection["value"].get("type") == "edited_output":
                     v = injection["value"]
                     output = Output(id=v["output_id"], work_item_id=item.id,
                                     artifact_ref=v["artifact_ref"], produced_by=injection["actor"],
                                     trace_ref="trace://injected", produced_at=_now())
                 else:
-                    with tracer.span("execute", _actor_of(self.executor, "Executor"), "tool_call"):
+                    with tracer.span("execute", _actor_of(self.executor, "Executor"), "tool_call") as h:
                         output = self.executor.execute(item)
+                        h.cost = output.cost  # the runtime's reported token cost (None if not reported)
+                    exec_cost = h.cost        # tokens + the span's measured wall-clock
 
                 # Record the "executed" marker BEFORE the effect and the verdict, so a crash
                 # after the change is committed but before the verdict is recoverable.
@@ -287,7 +313,7 @@ class CellHandbrake:
                                   {"stage": "execute", "output_id": output.id,
                                    "work_item_id": output.work_item_id,
                                    "artifact_ref": output.artifact_ref, "attempt": attempt},
-                                  cost=self._ecost("execute"))
+                                  cost=exec_cost)
 
             # The external L1/L2 action goes through the idempotency wrapper. It runs on BOTH the
             # fresh and the resumed path, so a crash that wrote the marker but not the effect does
@@ -301,7 +327,7 @@ class CellHandbrake:
                     lambda _a: output.artifact_ref, self.ledger, self.governance,
                     store=self.store, flow_id=flow_id)
 
-            with tracer.span("verify", _actor_of(self.verifier, "Verifier"), "verification"):
+            with tracer.span("verify", _actor_of(self.verifier, "Verifier"), "verification") as h:
                 verdict = self.verifier.verify(output, goal)
             if verdict.verified_by == output.produced_by:
                 raise NonIndependentVerification(
@@ -311,7 +337,7 @@ class CellHandbrake:
                               {"stage": "verify", "verdict_id": verdict.id, "decision": verdict.decision,
                                "output_id": output.id, "work_item_id": output.work_item_id,
                                "attempt": attempt},
-                              cost=self._ecost("verify"))
+                              cost=h.cost)
 
             if verdict.decision == "return" and attempt < self.max_revisions:
                 attempt += 1
@@ -395,7 +421,4 @@ class CellHandbrake:
         return cp
 
     def _tracer(self, flow_id) -> Tracer:
-        return Tracer(self.recorder, flow_id, self.cost_model)
-
-    def _ecost(self, stage: str):
-        return self.cost_model(stage) if self.cost_model else None
+        return Tracer(self.recorder, flow_id, self.cost_model, clock=self.clock)

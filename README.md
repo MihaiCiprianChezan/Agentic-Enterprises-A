@@ -112,13 +112,15 @@ It prints a scannable timeline plus a verdict summary — the bottom line at a g
 
 ```
 VERDICT: PASS
-execute attempts: 1   ·   re-derivations: 3 (specify→decompose→govern)
-governance: 3 allow · 0 block
+execute attempts: 1   ·   re-derivations: 1 (specify→decompose→govern)
+governance: 1 allow · 0 block
 effects: irreversible CLASS_VISIBLE_OUTPUT → https://github.com/…/pull/1  (exactly-once ✓)
+total cost: 4096 tokens, 1300ms wall
 chain: ✓ intact (tamper-evident)
 ```
 
-It reads the **durable event plane** (not the in-memory trace, which doesn't survive the process),
+Cost is **real** — every step records its measured wall-clock, and the execute step also carries the
+runtime's reported token usage (claude). It reads the **durable event plane** (not the in-memory trace, which doesn't survive the process),
 verifies the hash chain (tamper-evidence), and surfaces a tampered record loudly rather than
 hiding it. `--full` dumps complete event payloads. See **[docs/Using-a-Cell.md](docs/Using-a-Cell.md)**.
 

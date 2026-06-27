@@ -37,7 +37,13 @@ Swap the spec: `CliAgentRunner(CliAgentSpec.codex())` (or `.gemini()` / `.pi()`)
 are config-ready and run through the same runner; confirm their flags on first use (CLIs evolve
 fast) and ensure that CLI is installed/authenticated. Claude Code is the live-verified default.
 
+## Cost
+The claude preset runs with `--output-format json` and parses the reported **token usage** into the
+execute event's cost (`CliAgentSpec.usage_parser`); other presets report wall-clock only until a
+parser is added for them. Every step also records its measured wall-clock regardless of runtime.
+
 ## Inspecting a run afterwards
 After a live run, read its trajectory back from the durable state DB:
 `python -m cell.observe "<target>.cell-state.db" <flow_id>` (the live runner uses flow id
-`live-1`). See [Using-a-Cell.md](../../../docs/Using-a-Cell.md) §5.
+`live-1`). Re-running the same target is safe — it resumes the existing `live-1` flow rather than
+restarting. See [Using-a-Cell.md](../../../docs/Using-a-Cell.md) §5.
