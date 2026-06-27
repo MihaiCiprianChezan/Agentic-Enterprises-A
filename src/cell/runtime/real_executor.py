@@ -48,7 +48,7 @@ class RealExecutor:
         return Output(
             id=f"out-{item.id}", work_item_id=item.id, artifact_ref=f"branch:{self.branch}@{sha}",
             produced_by=self.actor, trace_ref=f"trace://{item.id}",
-            produced_at=datetime.now(timezone.utc), side_effects=[])
+            produced_at=datetime.now(timezone.utc), side_effects=[], cost=result.cost)
 
     def _prompt(self, item: WorkItem) -> str:
         criteria = "\n".join(f"- {c.statement}" for c in item.acceptance_criteria)

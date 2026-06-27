@@ -12,6 +12,7 @@ import pytest
 
 from cell.cell import Cell
 from cell.domain.objects import ActorRef, BudgetCap, Criterion, CriterionScore, Goal, Output, Verdict, WorkItem
+from cell.planes.memory import CostDelta
 from cell.runtime.deliver import deliver_on_pass
 from cell.runtime.real_executor import ExecutorError, RealExecutor
 from cell.runtime.real_verifier import RealVerifier
@@ -26,9 +27,54 @@ from cell.runtime.runner import (
 
 
 def test_claude_preset_renders_argv():
-    # The prompt is NOT an argv element (it goes on stdin); argv is the command + permission flags.
+    # The prompt is NOT an argv element (it goes on stdin); argv is the command + flags, including
+    # JSON output so token usage can be parsed back.
     argv = render_argv(CliAgentSpec.claude_code())
-    assert argv == ["claude", "-p", "--permission-mode", "acceptEdits"]
+    assert argv == ["claude", "-p", "--permission-mode", "acceptEdits", "--output-format", "json"]
+
+
+def test_claude_preset_parses_token_usage_from_json():
+    spec = CliAgentSpec.claude_code()
+    assert spec.usage_parser is not None
+    cost = spec.usage_parser('{"result":"ok","usage":{"input_tokens":1000,"output_tokens":500}}')
+    assert cost.compute == 1500 and cost.units == "tokens"
+    assert spec.usage_parser("not json at all") is None       # parse failure → no cost, not a crash
+
+
+def test_runner_sets_cost_from_the_specs_usage_parser(tmp_path):
+    spec = CliAgentSpec(
+        argv_template=["python", "-c", "print('TOKENS=7')"],
+        permission_args=[], instruction_file="X",
+        usage_parser=lambda out: CostDelta(compute=7.0) if "TOKENS=7" in out else None)
+    res = CliAgentRunner(spec).run("p", str(tmp_path))
+    assert res.cost is not None and res.cost.compute == 7.0
+
+
+def test_runner_survives_a_throwing_usage_parser(tmp_path):
+    def boom(_out):
+        raise ValueError("bad usage shape")
+
+    spec = CliAgentSpec(argv_template=["python", "-c", "print('ok')"],
+                        permission_args=[], instruction_file="X", usage_parser=boom)
+    res = CliAgentRunner(spec).run("p", str(tmp_path))
+    assert res.returncode == 0 and res.cost is None      # best-effort: never fails the run
+
+
+def test_claude_usage_parser_tolerates_non_numeric_tokens():
+    parse = CliAgentSpec.claude_code().usage_parser
+    assert parse('{"usage":{"input_tokens":"oops","output_tokens":null}}') is None
+
+
+def test_real_executor_threads_runner_cost_onto_the_output(tmp_path):
+    _init_repo(tmp_path)
+
+    class _CostRunner:
+        def run(self, prompt, cwd):
+            Path(cwd, "greeting.txt").write_text("hi")
+            return RunResult(returncode=0, stdout="", stderr="", cost=CostDelta(compute=123))
+
+    out = RealExecutor(_CostRunner(), str(tmp_path), "feat/wi-1").execute(_work_item())
+    assert out.cost is not None and out.cost.compute == 123
 
 
 def test_runner_passes_the_prompt_on_stdin(tmp_path):

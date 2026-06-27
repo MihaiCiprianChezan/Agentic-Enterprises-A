@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hashlib
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Iterator, Literal, Optional, Protocol, runtime_checkable
 
@@ -139,10 +139,17 @@ class Tracer:
             status = "error"
             raise
         finally:
+            ended_at = self.clock()
+            # Attribute the actual measured wall-clock onto the cost — the span IS the authority on
+            # duration, so it replaces wall_clock_ms. `compute`/`units` come from the caller-set cost
+            # (e.g. a runtime's token usage) or the cost_model fallback. Set on the handle so the
+            # caller can read the measured cost for the event it appends (cost-into-events).
+            base = handle.cost if handle.cost is not None else self.cost_model(step)
+            elapsed_ms = max(0, round((ended_at - started_at).total_seconds() * 1000))
+            handle.cost = replace(base, wall_clock_ms=elapsed_ms)
             if self.store is not None:
                 self.store.record(TraceSpan(
                     flow_id=self.flow_id, step=step, actor=actor, kind=kind,
                     input_digest=input_digest, output_digest=handle.output_digest,
-                    cost=handle.cost if handle.cost is not None else self.cost_model(step),
-                    started_at=started_at, ended_at=self.clock(), status=status,
+                    cost=handle.cost, started_at=started_at, ended_at=ended_at, status=status,
                 ))

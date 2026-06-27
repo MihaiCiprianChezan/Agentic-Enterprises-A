@@ -98,6 +98,8 @@ flow hits a breakpoint  ──▶  flow CHECKPOINTS (durable, exact state)
 
 Every step here is captured in the Observability and audit trails (Constitution Art. 10.1). A flow waiting on a human is a paused, checkpointed flow — not a running thread — so it can wait minutes or days at no cost (model §7).
 
+**Re-entry is resume, not restart.** Re-invoking `start()` on a `flow_id` that already has recorded events does not re-derive its plan: a completed flow returns its recorded verdict with no new events (idempotent), and a crashed flow reuses its recorded specify→decompose prefix and continues from its first unfinished work item. This is what makes re-running a crashed flow safe (it recovers rather than duplicating); to continue a *paused* flow, use `resume`.
+
 ---
 
 ## 4. Hard requirements (the interface is only as real as these)

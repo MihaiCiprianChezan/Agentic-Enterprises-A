@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
+
+if TYPE_CHECKING:  # CostDelta lives in planes.memory, which imports this module — avoid the cycle
+    from cell.planes.memory import CostDelta
 
 # --- shared -----------------------------------------------------------------
 
@@ -103,6 +106,7 @@ class Output:
     trace_ref: str
     produced_at: datetime
     side_effects: list[str] = field(default_factory=list)  # idempotency keys; see effects.wrapper
+    cost: Optional["CostDelta"] = None   # what producing it cost (e.g. a runtime's token usage)
 
 
 @dataclass(frozen=True)
