@@ -122,3 +122,12 @@ def test_registry_is_unchanged_by_evaluation():
     before = dict(ACTION_CLASS_REGISTRY)
     RuleSetGovernance().decide(_action("CLASS_SOMETHING_NEW"), AGENT)
     assert ACTION_CLASS_REGISTRY == before
+
+
+def test_registry_snapshot_is_isolated_from_later_mutation():
+    # R2 at runtime: an instance holds its own read-only snapshot; mutating the source map
+    # after construction cannot change its decisions.
+    source = dict(ACTION_CLASS_REGISTRY)
+    gov = RuleSetGovernance(source)
+    source["CLASS_READ"] = "L0"  # tamper with the source after the fact
+    assert gov.decide(_action("CLASS_READ"), AGENT).allowed is True  # still L3, unaffected

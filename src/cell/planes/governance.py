@@ -11,6 +11,7 @@ seeding now, because the idempotency wrapper already references action_class.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 from cell.domain.objects import Level
@@ -85,7 +86,9 @@ class RuleSetGovernance:
     (the Handbrake, the cost plane, the Steward, the flow) and cite the same clauses."""
 
     def __init__(self, registry: dict[str, Level] = ACTION_CLASS_REGISTRY) -> None:
-        self._registry = registry
+        # Snapshot + freeze: an instance can neither mutate the shared global nor be changed
+        # at runtime — the registry changes only by amendment (R2 / Art. 4.1, 2.3).
+        self._registry = MappingProxyType(dict(registry))
 
     def decide(self, action: Any, actor: Any) -> GovernanceDecision:
         action_class = action.action_class
