@@ -99,6 +99,29 @@ CELL_LIVE=1 \
 Claude Code is the default runtime; Codex / Gemini / Pi ship as selectable presets behind the same
 `Runner` seam (a CLI flag may need a tweak as those tools evolve).
 
+## Observing a run
+
+Every flow records its whole trajectory to the durable, hash-chained event plane, so a finished
+run — manual, live, or a crash — can be read back after the fact to confirm the cell behaved:
+
+```bash
+python -m cell.observe <state_db> [flow_id]   # omit flow_id to list the flows in the DB
+```
+
+It prints a scannable timeline plus a verdict summary — the bottom line at a glance:
+
+```
+VERDICT: PASS
+execute attempts: 1   ·   re-derivations: 3 (specify→decompose→govern)
+governance: 3 allow · 0 block
+effects: irreversible CLASS_VISIBLE_OUTPUT → https://github.com/…/pull/1  (exactly-once ✓)
+chain: ✓ intact (tamper-evident)
+```
+
+It reads the **durable event plane** (not the in-memory trace, which doesn't survive the process),
+verifies the hash chain (tamper-evidence), and surfaces a tampered record loudly rather than
+hiding it. `--full` dumps complete event payloads. See **[docs/Using-a-Cell.md](docs/Using-a-Cell.md)**.
+
 ## Read the design (the source of truth)
 
 The docs are authoritative — if code and a doc disagree, the doc wins (or the doc is amended first).
@@ -110,6 +133,10 @@ The docs are authoritative — if code and a doc disagree, the doc wins (or the 
 5. [`Handbrake-Interface.md`](docs/Handbrake-Interface.md) — the control plane.
 6. [`Build-Spec.md`](docs/Build-Spec.md) — schemas, the trace/cost rules, the idempotency contract, and governance rules R1–R12.
 7. [`Component-Selection.md`](docs/Component-Selection.md) — capability → tool mapping; what's needed vs. deferred.
+
+**Using & operating the cell:** [`Using-a-Cell.md`](docs/Using-a-Cell.md) — start-to-finish usage guide
+(install → demo → assemble → drive → observe). **Milestone notes:** [`M0-Implementation-Notes.md`](docs/M0-Implementation-Notes.md)
+— the step-ordered M0 playbook (durable store → wrapper → kill-and-resume gate).
 
 `CLAUDE.md` is the orientation file for an agent picking up the repo.
 
