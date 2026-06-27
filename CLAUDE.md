@@ -64,13 +64,15 @@ src/cell/
   roles/reference.py    # reference implementers of the operating roles (M2)
   flow.py               # run_flow — composes the role contracts + traces them (M2/M3)
   handbrake.py          # CellHandbrake — the five control primitives on the flow (M4)
+  autonomy.py           # AutonomyBoard — Board-ratified ceiling amendments (M6)
+  steward.py            # Steward — drift/loop/cost quarantine + rollback (M7)
   planes/
     memory.py           # event/memory plane — EventStore + Event/Checkpoint/Decision (M0)
     observability.py    # observability plane — TraceSpan + cost attribution (M3)
-    governance.py       # action-class registry + rules R1–R12 (M5; permissive stub for M0)
+    governance.py       # action-class registry + RuleSetGovernance R1–R12 (M5)
     control.py          # the Handbrake Protocol — interface for M4 (impl in handbrake.py)
   effects/wrapper.py    # the idempotency wrapper — M0 CORE
-tests/                  # M0 idempotency · durable store · M2 contracts · M3 observability
+tests/                  # one suite per milestone (M0–M7)
 ```
 
 ## Conventions
