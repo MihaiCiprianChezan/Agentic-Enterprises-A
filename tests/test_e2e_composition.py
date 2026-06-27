@@ -142,3 +142,10 @@ def test_steward_quarantines_an_induced_loop_before_the_cap():
     assert action.kind == "quarantine"
     assert action.rule == "R8"
     assert cell.cost("f1").compute < budget.compute  # quarantined before the cap
+
+
+def test_demo_runs_without_error(capsys):
+    from cell import demo
+    demo.main()
+    out = capsys.readouterr().out
+    assert "Routine" in out and "blocked" in out.lower() and "quarantine" in out.lower()
