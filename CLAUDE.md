@@ -61,13 +61,15 @@ idempotency-key pitfalls called out.
 src/cell/
   domain/objects.py     # wire schema: Ticket, Goal, WorkItem, Output, Verdict (Build-Spec §1)
   roles/contracts.py    # the five role Protocols (M2)
+  roles/reference.py    # reference implementers of the operating roles (M2)
+  flow.py               # run_flow — composes the role contracts + traces them (M2/M3)
   planes/
     memory.py           # event/memory plane — EventStore + Event/Checkpoint/Decision (M0)
-    observability.py     # (M3) — trace + cost  [to add]
-    governance.py        # action-class registry + rules R1–R12 (M5; permissive stub for M0)
-    control.py           # the Handbrake interface (M4)
+    observability.py    # observability plane — TraceSpan + cost attribution (M3)
+    governance.py       # action-class registry + rules R1–R12 (M5; permissive stub for M0)
+    control.py          # the Handbrake interface (M4)
   effects/wrapper.py    # the idempotency wrapper — M0 CORE
-tests/test_m0_idempotency.py
+tests/                  # M0 idempotency · durable store · M2 contracts · M3 observability
 ```
 
 ## Conventions
