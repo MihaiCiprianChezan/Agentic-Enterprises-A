@@ -291,6 +291,14 @@ on action A by actor X at step S of flow F:
     L0: do not execute; emit suggestion to human                          # R1
   append governance Event(allow|block, trace→clause)                       # R6/R12
 ```
+**Where the gate runs (the assembled cell).** R6 is evaluated at the **action site**: as the
+flow handles each work item, the control plane (the Handbrake) evaluates the action against
+the compiled rules *before* deciding to pause or execute, and appends a `governance` event
+recording the decision — **allow and block alike** (R12). A block (e.g. an L0 action under R1)
+stops the action up front; an allow proceeds (an L1 action then still hits its static
+breakpoint, R4). The assembled cell wires `RuleSetGovernance` here; `PermissiveGovernance` is a
+development-only stub.
+
 Verification (R5) runs as the inline gate on the Output before handback; cost rules (C1/C2) feed R7 continuously. **R8 is not a per-action check:** loop/runaway detection is a continuous Steward/Observability signal (Role-Contracts §5; build plan §3.2) that quarantines a flow *before* it reaches the cap — it runs alongside this procedure, not inside it.
 
 **On the constitution clauses that are not per-action rules.** Art. 10.3 (tamper-evidence) is enforced structurally by the event plane's hash chain (§2.1) and surfaced in R12. Art. 2.3 (no self-modification of the constitution) is enforced at the runtime surface by R2 (a role cannot change the registry/rules) and architecturally by the amendment-only compilation path (Constitution Art. 8.3). Art. 2.4 (inward sovereignty — nothing outside reaches inside except through the constitution or an authorized Role) is an architectural boundary property of the cell, not an action check, so it is realized in the cell's access model rather than as an R-rule. None is silently dropped (§5.4); each is accounted for, just not all as per-action rules.

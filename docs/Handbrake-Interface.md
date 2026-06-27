@@ -108,6 +108,12 @@ From model §6, restated as build acceptance conditions:
 2. **Idempotent actions.** Every tool/side effect is safe to retry, or resume re-fires it. (Build plan §0, invariant #4.)
 3. **Universality.** The Handbrake is present on **every** flow, callable by any authorized human at any time — not a special path. A flow that cannot be paused, inspected, adjusted, and resumed is non-compliant and does not ship.
 
+**The governance gate is co-located with the handbrake.** Because every action passes through
+the control plane, the compiled-rule check (R6, Build-Spec §5.3) is evaluated here, at the
+action site, before an action pauses or executes: governance decides *may this class act at
+all* (an L0 action is blocked outright), and the breakpoint enforces *the human approval an L1
+action still needs*. Both decisions land on the durable, tamper-evident trail.
+
 ---
 
 ## 5. Acceptance test for M4
