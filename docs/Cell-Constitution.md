@@ -1,8 +1,8 @@
 ---
-Title: Cell Constitution (generic template, ratified instance)
-Version: 0.1.0
+Title: Cell Constitution — Agentic-Enterprises-A (ratified instance)
+Version: 1.0.0
 Date: 27.06.2026
-Status: Board-ratified · Living document
+Status: Board-ratified (M1) · Living document
 Companion to: Agentic-First-Enterprises.md · One-Cell-Build-Plan.md
 ---
 
@@ -10,14 +10,14 @@ Companion to: Agentic-First-Enterprises.md · One-Cell-Build-Plan.md
 
 This is the source document this cell operates under. It is written in human language by the Board and is the text the Governance plane compiles into runtime-enforced rules (model §3, §17). It is deliberately short so the compiled rule set is small enough to validate by hand. Every enforced rule must trace back to a clause here.
 
-It is written **generically**: the placeholders in `«angle brackets»` are the only cell-specific parts. Fill them in to instantiate the cell; leave the rest. The defaults below are sane for a low-stakes, single-workflow cell and are enough to build M0 against.
+This is the **ratified instance** for the `Agentic-Enterprises-A` cell, instantiated from the generic template at M1 by a Board of one. The cell-specific values (name, purpose, budget cap, Board rule) are filled in below; the rest is the template text, unchanged. Changing any of it is a Board amendment (Article 8), not an edit.
 
 ---
 
 ## Article 1 — Identity and purpose
 
-- **1.1 Cell name.** `«CELL_NAME»`
-- **1.2 Purpose.** This cell exists to: `«ONE-SENTENCE OUTCOME THE CELL OWNS»`.
+- **1.1 Cell name.** Agentic-Enterprises-A
+- **1.2 Purpose.** This cell exists to: intake a software feature or bug request, produce a verified code change on a branch, and hand it back to the existing human review/merge process — owning nothing beyond that slice.
 - **1.3 The one workflow.** The cell owns exactly one slice of work, end to end: **intake → produce → verify → hand the result back to the existing downstream process.** It owns nothing outside this slice.
 
 ## Article 2 — Boundary (what the cell must never do)
@@ -62,9 +62,9 @@ Autonomy is assigned **per action class, not per role.** The same role may run a
 
 ## Article 6 — Budgets and limits
 
-- **6.1 Per-goal ceiling.** No single goal may exceed `«BUDGET CAP: cost / compute / wall-clock»` without escalation.
+- **6.1 Per-goal ceiling.** No single goal may exceed 250,000 tokens of compute or 15 minutes of wall-clock without escalation.
 - **6.2 Cost-spiral cutoff.** A flow that loops or exceeds its budget cap is quarantined by the Steward, not allowed to run on.
-- **6.3** What counts as cost (compute, human time, opportunity cost) is `«DEFINE OR DEFAULT TO: compute + wall-clock»`.
+- **6.3** What counts as cost (compute, human time, opportunity cost) is compute + wall-clock.
 
 ## Article 7 — Escalation
 
@@ -80,7 +80,7 @@ On escalation the flow checkpoints; a human assumes the Role's interface, acts o
 ## Article 8 — The Board and amendment
 
 - **8.1 The Board.** The human accountability anchor. May be one person or many. Authors and owns this constitution; carries legal and representational accountability; runs a periodic check that the cell still serves its written purpose. The Board does not operate the cell turn by turn.
-- **8.2 Decision rule.** This cell's Board is `«ONE PERSON»` / `«N PEOPLE WITH QUORUM Q AND RATIFY THRESHOLD T»`. Amendments require `«SOLE APPROVAL»` / `«THRESHOLD T»`. Deadlock resolves by `«RULE»`. (A Board of one needs no procedure beyond its own decision.)
+- **8.2 Decision rule.** This cell's Board is one person: Mihai-Ciprian Chezan (mikache82@gmail.com). Amendments require that person's sole approval. A Board of one needs no quorum, ratify threshold, or deadlock procedure beyond its own decision.
 - **8.3 Amendment process.** Propose → ratify → re-compile the Governance plane → re-validate that every compiled rule still traces to a clause → log in the audit trail. Because governance is re-compiled from this text, a ratified amendment propagates to enforcement with no separate "update the agents" step.
 - **8.4 Learning is human-codified.** The Observability plane and (later) the Auditor may surface patterns as *proposed* amendments. Only the Board turns a proposal into a rule.
 
@@ -96,11 +96,17 @@ A human who assumes a Role through the Handbrake **acts as that Role**: they inh
 
 ---
 
-### Minimal fill-in to instantiate (everything needed for M0)
+### Ratification record (M1)
 
-- `«CELL_NAME»` — a name.
-- `«ONE-SENTENCE OUTCOME THE CELL OWNS»` — the purpose (1.2).
-- `«BUDGET CAP»` — the per-goal ceiling (6.1).
-- Board shape and decision rule (8.2).
+Instantiated from the generic template and ratified by the Board on 27.06.2026. The
+cell-specific values:
 
-With those four filled, this constitution is concrete enough to compile a tiny rule set against and to build M0–M2 of the build plan.
+- **Cell name (1.1)** — Agentic-Enterprises-A.
+- **Purpose (1.2)** — intake → produce a verified code change → hand back to human review/merge.
+- **Budget cap (6.1)** — 250,000 tokens of compute or 15 minutes of wall-clock per goal.
+- **Cost basis (6.3)** — compute + wall-clock.
+- **Board (8.2)** — a Board of one (Mihai-Ciprian Chezan), sole approval.
+
+With these filled, the constitution is concrete enough to compile a tiny rule set against
+(M5) and to build M2–M4 of the build plan. Every later enforced rule must trace to a clause
+here (build-plan M1 acceptance). Subsequent changes are Board amendments (Article 8.3), not edits.

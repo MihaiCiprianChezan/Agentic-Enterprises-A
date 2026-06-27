@@ -54,7 +54,6 @@ def test_idempotency_key_is_deterministic():
 
 # --- the idempotency wrapper: exactly-once across resume (Build-Spec §4) ------
 
-@pytest.mark.skip(reason="M0: implement effects.wrapper.perform(), then remove this skip")
 def test_completed_effect_is_not_refired():
     """The core M0 guarantee: a second perform() with the same key returns the prior
     result and does NOT execute again."""
@@ -79,7 +78,6 @@ def test_completed_effect_is_not_refired():
     assert calls["n"] == 1  # executed exactly once
 
 
-@pytest.mark.skip(reason="M0: implement effects.wrapper.perform(), then remove this skip")
 def test_irreversible_effect_is_at_most_once():
     """For an irreversible effect, an in-flight record must NOT be re-executed on resume
     (at-most-once); the execute callable is never called a second time."""
