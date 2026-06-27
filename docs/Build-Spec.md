@@ -153,17 +153,22 @@ Decision {
 ```
 This is what makes a takeover a handover of *reasoning*, not raw state (model §5; Handbrake §2 briefing).
 
-### 2.4 Version registry (stub)
+### 2.4 Version registry (built — the M9 Auditor precondition)
 ```
 VersionRecord {
   role: string
   version: string                # the whole behavioral bundle id: logic+prompt+config
-  activated_at: timestamp
   variant_of: string?            # set when a handbrake injection ran as a tracked variant
-  status: "active"|"rolled_back"
+  status: "active"|"rolled_back"|"suspended"
 }
 ```
-One active version per role in the MVP. The field exists so the Auditor can rate versions later (Constitution Art. 3.4) — present, unused.
+Now built (`cell/versions.py`): the registry is **event-sourced** on a reserved `__versions__` flow,
+so it is durable, hash-chained, and auditable like any plane state. Multiple versions of a role may
+run; each is registered with a status. The **Optimizer respects status** — it never routes to a
+non-`active` (rolled_back / suspended) version (`suspended` is the Auditor's lever, M9). Per-version
+field outcome + cost is scored by `version_stats` (runs / pass / return / mean cost) — the
+raw signal the Auditor (M9) will rate. The Auditor itself (ratings, suspension *policy*, the
+human-response SLA) is still deferred (Constitution Art. 3.4).
 
 ---
 

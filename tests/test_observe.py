@@ -67,6 +67,18 @@ def test_timeline_shows_the_optimizer_route_decision(tmp_path):
     assert "route → haiku-light (floor 1)" in out
 
 
+def test_timeline_shows_version_registry_events(tmp_path):
+    store = DurableEventStore(str(tmp_path / "state.db"))
+    R = ActorRef("Registry", "ref")
+    store.append("__versions__", "version", R,
+                 {"stage": "register", "role": "Executor", "version": "exec-v2", "status": "active"})
+    store.append("__versions__", "version", R,
+                 {"stage": "status", "version": "exec-v2", "status": "suspended"})
+    out = format_timeline(store.read("__versions__"))
+    assert "register Executor exec-v2 (active)" in out
+    assert "status exec-v2 → suspended" in out
+
+
 def test_tampered_payload_breaks_the_chain_and_is_surfaced(tmp_path):
     import json as _json
     import sqlite3

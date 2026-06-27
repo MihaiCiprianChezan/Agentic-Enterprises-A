@@ -167,6 +167,12 @@ def key_fact(ev: Event) -> str:
         if d == "RETURN" and p.get("reason"):
             return f"RETURN · {p['reason']}"
         return d or "verdict"
+    if k == "version":
+        if p.get("stage") == "register":
+            return f"register {p.get('role', '?')} {p.get('version', '?')} ({p.get('status', 'active')})"
+        if p.get("stage") == "status":
+            return f"status {p.get('version', '?')} → {p.get('status', '?')}"
+        return p.get("stage", "version")
     return f"{k} · {','.join(list(p.keys())[:3])}"
 
 
