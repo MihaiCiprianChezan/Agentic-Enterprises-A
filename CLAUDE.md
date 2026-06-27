@@ -70,6 +70,8 @@ src/cell/
   demo.py               # runnable end-to-end demo of the §7 definition of done (python -m cell.demo)
   autonomy.py           # AutonomyBoard — Board-ratified ceiling amendments (M6)
   steward.py            # Steward — drift/loop/cost quarantine + rollback (M7)
+  optimize.py           # Optimizer — capability/cost-aware implementer routing (M8)
+  observe.py            # read-only run inspector over the durable event plane (python -m cell.observe)
   planes/
     memory.py           # event/memory plane — EventStore + Event/Checkpoint/Decision (M0)
     observability.py    # observability plane — TraceSpan + cost attribution (M3)

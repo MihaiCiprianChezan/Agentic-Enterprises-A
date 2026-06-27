@@ -55,7 +55,7 @@ The model's full role set (§4) is collapsed to the minimum that still makes the
 | Execution (Executor) | Yes | Produces the actual code change with its tools (repo, editor, test runner). | The deep specialist. Knows its task, not the global plan. |
 | Verification (Verifier) | Yes | Independently scores the change against acceptance criteria, tests, lint, policy. | Must be independent of the Executor. This is the only inline gate. |
 | Steward | Minimal | Watches for drift/looping/runaway cost; can roll a flow back to a checkpoint. | Start as alerting + manual rollback; automate later. |
-| Optimizer | **Deferred** | — | YAGNI (§10): a single uniform pipeline has no capability spread to route. Add only when model/cost variance appears. |
+| Optimizer | **Built (M8)** | M8 | Precondition now holds (attributed cost + capability/cost spread across implementers). Routes a Work item to the cheapest implementer clearing its constitutional capability floor; auditable, recovered on resume; engages only with ≥2 candidates (YAGNI). |
 | Auditor | **Deferred** | — | YAGNI (§11): nothing to compare until you run multiple versions. Add when versions start flying. |
 | Board | Yes — pattern | Writes/owns the constitution; the human accountability anchor. | Can be one person (the model's "Board of one", §3). Wears the hat part-time. |
 
@@ -176,7 +176,7 @@ Start every class at the §4 levels. Raise exactly one class (e.g. "write to the
 **M7 — Add the Steward (minimal).**
 Drift/loop/cost-runaway alerting + the ability to roll a flow back to a known-good checkpoint. Acceptance: an induced loop is detected and the flow is quarantined before it burns the budget cap.
 
-**Deferred past the MVP (and that is correct):** Optimizer (M8, only when capability/cost spread appears), Auditor + real version registry (M9, only when multiple versions run), any second cell / federation / supra-constitution (only when one cell is proven).
+**Built past the core MVP:** the Optimizer (M8) — its precondition (capability/cost spread + attributed cost) is now met. **Still deferred (and that is correct):** Auditor + real version registry (M9, only when multiple versions run), any second cell / federation / supra-constitution (only when one cell is proven).
 
 ---
 

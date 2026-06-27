@@ -104,6 +104,11 @@ class EventStore(Protocol):
         """Return the full ordered event history for a flow."""
         ...
 
+    def all_events(self) -> list[Event]:
+        """Every event across all flows — the cross-flow signal the Steward/Optimizer/Auditor read
+        (model §5). Ordered by flow then seq."""
+        ...
+
     def verify_chain(self, flow_id: str) -> bool:
         """Recompute the hash chain; return False if any link is broken (Art. 10.3)."""
         ...
@@ -139,6 +144,9 @@ class InMemoryEventStore:
 
     def read(self, flow_id) -> list[Event]:
         return list(self._events.get(flow_id, []))
+
+    def all_events(self) -> list[Event]:
+        return [ev for log in self._events.values() for ev in log]
 
     def verify_chain(self, flow_id) -> bool:
         prev = "GENESIS"
@@ -230,6 +238,10 @@ class DurableEventStore:
         rows = self._conn.execute(
             "SELECT * FROM events WHERE flow_id = ? ORDER BY seq", (flow_id,)
         ).fetchall()
+        return [self._row_to_event(r) for r in rows]
+
+    def all_events(self) -> list[Event]:
+        rows = self._conn.execute("SELECT * FROM events ORDER BY flow_id, seq").fetchall()
         return [self._row_to_event(r) for r in rows]
 
     def verify_chain(self, flow_id) -> bool:
