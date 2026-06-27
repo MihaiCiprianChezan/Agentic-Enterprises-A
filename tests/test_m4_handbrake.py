@@ -390,3 +390,67 @@ def test_resume_returns_the_latest_verdict_not_a_stale_one():
     assert v1.decision == "pass"
     v2 = hb.resume("f1")  # re-resume: guard must return the LATEST verdict (pass), not the first (return)
     assert v2.decision == "pass"
+
+
+def test_resume_after_a_crash_between_execute_and_verify_does_not_rerun_the_executor():
+    # Durability gap: the executor produced (and, for a real executor, committed) its Output and
+    # the durable "executed" marker was recorded, but the process died before the verdict. A
+    # resume must reconstruct the Output from the marker — NOT re-run the executor (which, for a
+    # real agent, would re-run it and hit an empty diff).
+    store = InMemoryEventStore()
+    calls = {"n": 0}
+
+    class CountingExecutor:
+        actor = EXECUTOR
+
+        def execute(self, item):
+            calls["n"] += 1
+            return RefExecutor().execute(item)
+
+    class CrashingVerifier:
+        actor = ActorRef(role="Verifier", version="ref-v0")
+
+        def verify(self, output, goal):
+            raise RuntimeError("crash during verify (after the execute marker was written)")
+
+    # L1 flow: start pauses; the first resume runs the executor + writes the marker, then verify
+    # crashes — leaving an execute marker with no verdict.
+    CellHandbrake(director=RefDirector(), orchestrator=L1Orchestrator(),
+                  executor=CountingExecutor(), verifier=CrashingVerifier(),
+                  store=store).start(_ticket(), "f1")
+    with pytest.raises(RuntimeError):
+        CellHandbrake(director=RefDirector(), orchestrator=L1Orchestrator(),
+                      executor=CountingExecutor(), verifier=CrashingVerifier(),
+                      store=store).resume("f1")
+    assert calls["n"] == 1  # executor ran once; the marker is on the durable trail
+
+    # A fresh controller resumes with a healthy verifier — it must NOT re-run the executor.
+    verdict = CellHandbrake(director=RefDirector(), orchestrator=L1Orchestrator(),
+                            executor=CountingExecutor(), verifier=RefVerifier(),
+                            store=store).resume("f1")
+    assert verdict.decision == "pass"
+    assert calls["n"] == 1  # the Output was reconstructed from the durable marker, not re-produced
+
+
+def test_resume_still_performs_the_work_item_effect_when_only_the_marker_was_written():
+    # invariant #4: if a crash left only the execute marker (perform had not completed), a resume
+    # that reconstructs the Output must still PERFORM the work-item effect (idempotently), never
+    # skip it. perform() is keyed by output.id, so a completed effect returns cached.
+    store = InMemoryEventStore()
+    ledger = InMemoryEffectsLedger()
+    hb = _handbrake(store=store, ledger=ledger)
+    paused = hb.start(_ticket(), "f1")  # L1 -> pauses; nothing executed yet
+
+    # Simulate a crash that wrote ONLY the execute marker (no perform completion, no verdict):
+    item_id = paused.pending_action["work_item_id"]
+    out_id = f"out-{item_id}"
+    store.append("f1", "action", EXECUTOR,
+                 {"stage": "execute", "output_id": out_id, "work_item_id": item_id,
+                  "artifact_ref": f"branch://{item_id}", "attempt": 0})
+
+    key = make_idempotency_key("f1", f"execute:{item_id}", {"output_id": out_id})
+    assert ledger.get(key) is None  # the effect was not performed before the crash
+
+    verdict = hb.resume("f1")
+    assert verdict.decision == "pass"
+    assert ledger.get(key).status == "completed"  # resume performed the effect, did not skip it

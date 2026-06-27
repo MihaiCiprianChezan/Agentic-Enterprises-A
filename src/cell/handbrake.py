@@ -257,22 +257,42 @@ class CellHandbrake:
     def _do_item(self, flow_id, item, goal, injection) -> Verdict:
         existing = self._existing_verdict(flow_id, item)
         if existing is not None:
-            return existing  # idempotent resume: already executed, do not re-run
+            return existing  # idempotent resume: already executed and verified, do not re-run
 
         tracer = self._tracer(flow_id)
-        attempt = 0
-        while True:
-            if injection is not None and injection["value"].get("type") == "edited_output":
-                v = injection["value"]
-                output = Output(id=v["output_id"], work_item_id=item.id,
-                                artifact_ref=v["artifact_ref"], produced_by=injection["actor"],
-                                trace_ref="trace://injected", produced_at=_now())
-            else:
-                with tracer.span("execute", _actor_of(self.executor, "Executor"), "tool_call"):
-                    output = self.executor.execute(item)
+        # Resume robustness: if a prior attempt already produced (and, for a real executor,
+        # committed) its Output and the durable execute marker was recorded, but the process
+        # died before the verdict, reconstruct that Output from the marker rather than re-running
+        # the executor (which a real agent would, then hit an empty diff). State lives in the
+        # plane (invariant #5).
+        resumed = self._unverified_output(flow_id, item)
+        pending, attempt = resumed if resumed is not None else (None, 0)
 
-            # The external L1/L2 action goes through the idempotency wrapper — exactly-once on
-            # resume, never re-fired after completion (invariant #4 / M0).
+        while True:
+            if pending is not None:
+                output, pending = pending, None
+            else:
+                if injection is not None and injection["value"].get("type") == "edited_output":
+                    v = injection["value"]
+                    output = Output(id=v["output_id"], work_item_id=item.id,
+                                    artifact_ref=v["artifact_ref"], produced_by=injection["actor"],
+                                    trace_ref="trace://injected", produced_at=_now())
+                else:
+                    with tracer.span("execute", _actor_of(self.executor, "Executor"), "tool_call"):
+                        output = self.executor.execute(item)
+
+                # Record the "executed" marker BEFORE the effect and the verdict, so a crash
+                # after the change is committed but before the verdict is recoverable.
+                self.store.append(flow_id, "action", output.produced_by,
+                                  {"stage": "execute", "output_id": output.id,
+                                   "work_item_id": output.work_item_id,
+                                   "artifact_ref": output.artifact_ref, "attempt": attempt},
+                                  cost=self._ecost("execute"))
+
+            # The external L1/L2 action goes through the idempotency wrapper. It runs on BOTH the
+            # fresh and the resumed path, so a crash that wrote the marker but not the effect does
+            # not skip the effect on resume (invariant #4). Keyed by output.id, so a completed
+            # effect returns cached and is never re-fired (M0).
             key = make_idempotency_key(flow_id, f"execute:{item.id}", {"output_id": output.id})
             action = ActionDescriptor(id=f"act-{item.id}", action_class=item.action_class,
                                       effect_kind="compensable", idempotency_key=key,
@@ -280,12 +300,6 @@ class CellHandbrake:
             perform(action, _actor_of(self.executor, "Executor"),
                     lambda _a: output.artifact_ref, self.ledger, self.governance,
                     store=self.store, flow_id=flow_id)
-
-            self.store.append(flow_id, "action", output.produced_by,
-                              {"stage": "execute", "output_id": output.id,
-                               "work_item_id": output.work_item_id, "artifact_ref": output.artifact_ref,
-                               "attempt": attempt},
-                              cost=self._ecost("execute"))
 
             with tracer.span("verify", _actor_of(self.verifier, "Verifier"), "verification"):
                 verdict = self.verifier.verify(output, goal)
@@ -304,6 +318,25 @@ class CellHandbrake:
                 injection = None  # only consume the injection on the first attempt
                 continue  # produce -> score -> revise loop (mirrors flow._produce_and_verify)
             return verdict
+
+    def _unverified_output(self, flow_id, item) -> Optional[tuple[Output, int]]:
+        """If the executor already produced an Output for this work item (an `execute` marker
+        exists) but its verdict was never recorded, return (reconstructed Output, attempt) so the
+        flow can resume at verification without re-running the executor; else None."""
+        events = self.store.read(flow_id)
+        execs = [e for e in events if e.payload.get("stage") == "execute"
+                 and e.payload.get("work_item_id") == item.id]
+        verifies = [e for e in events if e.payload.get("stage") == "verify"
+                    and e.payload.get("work_item_id") == item.id]
+        if len(execs) <= len(verifies):
+            return None
+        marker = execs[-1]
+        p = marker.payload
+        output = Output(id=p["output_id"], work_item_id=p["work_item_id"],
+                        artifact_ref=p["artifact_ref"], produced_by=marker.actor,
+                        trace_ref=f"trace://{p['work_item_id']}", produced_at=marker.at,
+                        side_effects=[])
+        return output, p.get("attempt", 0)
 
     def _existing_verdict(self, flow_id, item) -> Optional[Verdict]:
         events = self.store.read(flow_id)
