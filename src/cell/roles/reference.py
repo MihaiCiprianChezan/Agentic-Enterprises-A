@@ -27,6 +27,7 @@ from cell.domain.objects import (
 
 # One active version per role in the MVP (the version-registry stub, Build-Spec §2.4).
 DIRECTOR = ActorRef(role="Director", version="ref-v0")
+ORCHESTRATOR = ActorRef(role="Orchestrator", version="ref-v0")
 EXECUTOR = ActorRef(role="Executor", version="ref-v0")
 VERIFIER = ActorRef(role="Verifier", version="ref-v0")
 
@@ -37,6 +38,8 @@ _T0 = datetime(2026, 1, 1)  # placeholder; M3 supplies real timestamps
 
 class RefDirector:
     """Turns a Ticket into a specified, in-purpose Goal with testable acceptance criteria."""
+
+    actor = DIRECTOR
 
     def specify(self, ticket: Ticket) -> Goal:
         criterion = Criterion(
@@ -54,6 +57,8 @@ class RefDirector:
 class RefOrchestrator:
     """Decomposes a Goal into sequenced WorkItems and assigns the Executor."""
 
+    actor = ORCHESTRATOR
+
     def decompose(self, goal: Goal) -> list[WorkItem]:
         return [
             WorkItem(
@@ -68,6 +73,8 @@ class RefOrchestrator:
 class RefExecutor:
     """Produces the Output (a change on a working branch) for a single WorkItem."""
 
+    actor = EXECUTOR
+
     def execute(self, item: WorkItem) -> Output:
         return Output(
             id=f"out-{item.id}", work_item_id=item.id,
@@ -79,6 +86,8 @@ class RefExecutor:
 class RefVerifier:
     """Independently scores an Output against the Goal's criteria. verified_by is the
     Verifier identity, distinct from the Executor's — Constitution Art. 5.1 / R5."""
+
+    actor = VERIFIER
 
     def verify(self, output: Output, goal: Goal) -> Verdict:
         scores = [

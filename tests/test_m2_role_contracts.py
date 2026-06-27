@@ -13,7 +13,7 @@ from datetime import datetime
 import pytest
 
 from cell.domain.objects import ActorRef, CriterionScore, Output, Ticket, Verdict
-from cell.flow import NonIndependentVerification, run_flow
+from cell.flow import EmptyDecomposition, NonIndependentVerification, run_flow
 from cell.planes.memory import InMemoryEventStore
 from cell.roles.contracts import Director, Executor, Orchestrator, Verifier
 from cell.roles.reference import RefDirector, RefExecutor, RefOrchestrator, RefVerifier
@@ -130,3 +130,44 @@ def test_return_verdict_triggers_revision_then_passes():
                        store, "f1")
     assert verdict.decision == "pass"
     assert fv.calls == 2  # one return, then one pass
+
+
+# --- review fixes: totality, attribution, reconstructibility -----------------
+
+def test_empty_decomposition_raises_rather_than_returning_none():
+    # run_flow is total: an Orchestrator that yields no work items is an error, not a
+    # silent None return that would crash downstream on `.decision`.
+    class EmptyOrchestrator:
+        def decompose(self, goal):
+            return []
+
+    store = InMemoryEventStore()
+    with pytest.raises(EmptyDecomposition):
+        run_flow(_ticket(), RefDirector(), EmptyOrchestrator(), RefExecutor(),
+                 RefVerifier(), store, "f1")
+    # the anomaly is recorded for traceability before raising
+    assert any(e.payload.get("stage") == "decompose" for e in store.read("f1"))
+
+
+def test_decompose_event_attributes_the_actual_orchestrator():
+    # Swapping the Orchestrator must not misattribute the decomposition in the log.
+    class TaggedOrchestrator:
+        actor = ActorRef(role="Orchestrator", version="alt-orch-v9")
+
+        def decompose(self, goal):
+            return RefOrchestrator().decompose(goal)
+
+    store = InMemoryEventStore()
+    run_flow(_ticket(), RefDirector(), TaggedOrchestrator(), RefExecutor(), RefVerifier(),
+             store, "f1")
+    event = next(e for e in store.read("f1") if e.payload.get("stage") == "decompose")
+    assert event.actor == ActorRef(role="Orchestrator", version="alt-orch-v9")
+
+
+def test_verdict_event_links_to_its_output_and_work_item():
+    # The event log alone must let you reconstruct which artifact a verdict applied to.
+    store = InMemoryEventStore()
+    run_flow(_ticket(), RefDirector(), RefOrchestrator(), RefExecutor(), RefVerifier(),
+             store, "f1")
+    event = next(e for e in store.read("f1") if e.payload.get("stage") == "verify")
+    assert "output_id" in event.payload and "work_item_id" in event.payload
