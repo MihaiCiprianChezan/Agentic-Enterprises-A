@@ -169,9 +169,9 @@ class CellHandbrake:
         return Briefing(
             flow_id=flow_id, role=item.assigned_to.role, step=cp.step,
             why=cp.pending_action.get("reason", "static breakpoint"),
-            pending_action=cp.pending_action, authority_level=item.authority_level,
+            pending_action=cp.pending_action, authority_level=level_for(item.action_class),
             recent_decisions=recent, cost=total_cost(events), budget_cap=goal.budget_cap,
-            valid_moves=self._moves(item.authority_level),
+            valid_moves=self._moves(level_for(item.action_class)),
         )
 
     def inject(self, flow_id: str, value: dict[str, Any], actor: ActorRef) -> None:
@@ -229,7 +229,7 @@ class CellHandbrake:
         while index < len(items):
             item = items[index]
             self._govern(flow_id, item)  # R6 gate at the action site (logs allow/block)
-            if item.authority_level in ("L0", "L1") or self._adhoc_hit(flow_id, item):
+            if level_for(item.action_class) in ("L0", "L1") or self._adhoc_hit(flow_id, item):
                 return self._pause(flow_id, ticket, index, item)
             verdict = self._do_item(flow_id, item, goal, None)
             if verdict.decision != "pass":
@@ -239,9 +239,10 @@ class CellHandbrake:
         return verdict
 
     def _pause(self, flow_id, ticket, index, item) -> Paused:
-        reason = f"static breakpoint before {item.authority_level} action (Art. 5.2)"
+        effective_level = level_for(item.action_class)
+        reason = f"static breakpoint before {effective_level} action (Art. 5.2)"
         pending = {"kind": "execute", "work_item_id": item.id, "action_class": item.action_class,
-                   "authority_level": item.authority_level, "reason": reason}
+                   "authority_level": effective_level, "reason": reason}
         bp_event = self.store.append(flow_id, "breakpoint", item.assigned_to,
                                      {"stage": "breakpoint", "work_item_id": item.id, "reason": reason})
         self.store.checkpoint(Checkpoint(
@@ -306,10 +307,11 @@ class CellHandbrake:
 
     def _existing_verdict(self, flow_id, item) -> Optional[Verdict]:
         events = self.store.read(flow_id)
-        verify = next((e for e in events if e.payload.get("stage") == "verify"
-                       and e.payload.get("work_item_id") == item.id), None)
-        if verify is None:
+        matches = [e for e in events if e.payload.get("stage") == "verify"
+                   and e.payload.get("work_item_id") == item.id]
+        if not matches:
             return None
+        verify = matches[-1]
         p = verify.payload
         return Verdict(id=p["verdict_id"], output_id=p["output_id"], decision=p["decision"],
                        scores=[], reason="(reconstructed from the durable trail)",
