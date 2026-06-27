@@ -26,9 +26,20 @@ from cell.runtime.runner import (
 
 
 def test_claude_preset_renders_argv():
-    argv = render_argv(CliAgentSpec.claude_code(), "do the thing")
-    assert argv[:3] == ["claude", "-p", "do the thing"]
-    assert "--permission-mode" in argv  # permission args appended for unattended runs
+    # The prompt is NOT an argv element (it goes on stdin); argv is the command + permission flags.
+    argv = render_argv(CliAgentSpec.claude_code())
+    assert argv == ["claude", "-p", "--permission-mode", "acceptEdits"]
+
+
+def test_runner_passes_the_prompt_on_stdin(tmp_path):
+    # The prompt must reach the agent via stdin (so a multi-line prompt can't be mangled by a
+    # Windows .CMD shim and the permission flags after it aren't dropped).
+    spec = CliAgentSpec(
+        argv_template=["python", "-c",
+                       "import sys, pathlib; pathlib.Path('got.txt').write_text(sys.stdin.read())"],
+        permission_args=[], instruction_file="X")
+    CliAgentRunner(spec).run("the real prompt", str(tmp_path))
+    assert (tmp_path / "got.txt").read_text() == "the real prompt"
 
 
 def test_runner_runs_a_real_subprocess_in_cwd(tmp_path):
