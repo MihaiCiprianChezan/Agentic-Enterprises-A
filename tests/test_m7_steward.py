@@ -14,7 +14,9 @@ from __future__ import annotations
 from cell.domain.objects import ActorRef, BudgetCap
 from cell.planes.memory import CostDelta, InMemoryEventStore
 from cell.planes.observability import total_cost
-from cell.steward import Steward, StewardAction
+import pytest
+
+from cell.steward import InvalidRollback, Steward, StewardAction
 
 EXEC = ActorRef(role="Executor", version="ref-v0")
 _BUDGET = BudgetCap(compute=10_000, wall_clock_ms=15 * 60 * 1000, units="tokens")
@@ -93,3 +95,32 @@ def test_steward_acts_are_attributed_to_the_steward():
     Steward(store).quarantine("f1", "loop")
     steward_events = [e for e in store.read("f1") if e.actor.role == "Steward"]
     assert steward_events
+
+
+# --- review fixes: multi-dimension cap, validated rollback, scoped quarantine -
+
+def test_wall_clock_cap_is_quarantined_even_when_compute_is_low():
+    store = InMemoryEventStore()
+    _loop(store, "f1", 5, per=CostDelta(compute=1, wall_clock_ms=100))  # compute 5, wall 500
+    steward = Steward(store, loop_threshold=99)  # disable loop detection
+    action = steward.assess("f1", BudgetCap(compute=10_000, wall_clock_ms=400))
+    assert action.kind == "quarantine"
+    assert action.rule == "R7"  # wall-clock dimension reached the cap
+
+
+def test_rollback_rejects_an_invalid_seq():
+    store = InMemoryEventStore()
+    steward = Steward(store)
+    steward.quarantine("f1", "loop")  # one event, seq 0
+    with pytest.raises(InvalidRollback):
+        steward.rollback("f1", to_seq=99)  # no such event boundary
+    assert steward.is_quarantined("f1") is True  # quarantine not spuriously cleared
+
+
+def test_quarantine_is_not_cleared_by_a_non_steward_rollback_marker():
+    store = InMemoryEventStore()
+    steward = Steward(store)
+    steward.quarantine("f1", "loop")
+    # An operating role emits an event that happens to carry stage "rollback".
+    store.append("f1", "state", EXEC, {"stage": "rollback", "to_seq": 0})
+    assert steward.is_quarantined("f1") is True  # only the Steward's own rollback clears it

@@ -25,6 +25,11 @@ from cell.planes.observability import total_cost
 STEWARD = ActorRef(role="Steward", version="ref-v0")
 
 
+class InvalidRollback(Exception):
+    """A rollback target that is not a real event boundary for the flow — refused, since a
+    trail must never claim a restore that cannot be applied."""
+
+
 @dataclass(frozen=True)
 class StewardAction:
     """The outcome of an assessment or intervention, carrying the rule/clause behind it."""
@@ -50,10 +55,10 @@ class Steward:
         or a loop is detected (R8). Returns an `ok` action when the flow is healthy."""
         events = self._store.read(flow_id)
         cost = total_cost(events)
-        if budget_cap is not None and cost.compute >= budget_cap.compute:
+        breach = self._cap_breach(cost, budget_cap)
+        if breach is not None:
             return self.quarantine(
-                flow_id,
-                f"running cost {cost.compute} reached budget cap {budget_cap.compute}",
+                flow_id, f"running cost reached the budget cap ({breach})",
                 rule="R7", clause="Art. 6.1")
 
         attempts = Counter(e.payload.get("work_item_id") for e in events
@@ -79,19 +84,46 @@ class Steward:
 
     def rollback(self, flow_id: str, to_seq: int) -> StewardAction:
         """Restore the flow to a known-good checkpoint and lift the quarantine. The Steward
-        restores state; it never edits a work product (Art. 3.2)."""
+        restores state; it never edits a work product (Art. 3.2). `to_seq` must be a real event
+        boundary for the flow, or the rollback is refused (no unapplyable restore on the trail)."""
+        events = self._store.read(flow_id)
+        last_seq = events[-1].seq if events else -1
+        if not (0 <= to_seq <= last_seq):
+            raise InvalidRollback(
+                f"seq {to_seq} is not a valid event boundary for {flow_id!r} (0..{last_seq})")
         self._store.append(flow_id, "state", STEWARD,
                            {"stage": "rollback", "to_seq": to_seq})
         return StewardAction(flow_id, "rollback", f"rolled back to seq {to_seq}",
                              rule="R8", clause="Art. 6.2")
 
     def is_quarantined(self, flow_id: str) -> bool:
-        """Quarantine holds until a rollback restores a known-good checkpoint."""
+        """Quarantine holds until the STEWARD restores a known-good checkpoint. Only the
+        Steward's own events toggle it — a coincidental `rollback` stage from an operating role
+        cannot de-quarantine a flow."""
         quarantined = False
         for e in self._store.read(flow_id):
+            if e.actor.role != STEWARD.role:
+                continue
             stage = e.payload.get("stage")
             if stage == "quarantine":
                 quarantined = True
             elif stage == "rollback":
                 quarantined = False
         return quarantined
+
+    def _cap_breach(self, cost: Any, budget_cap: Any) -> Optional[str]:
+        """Rule C2/R7: report the first budget dimension the running cost has reached, or None.
+        Checks every dimension of the BudgetCap, not just compute (Build-Spec §3.2)."""
+        if budget_cap is None:
+            return None
+        if cost.units != budget_cap.units:
+            # Costs in different units cannot be compared — fail safe and quarantine.
+            return f"units {cost.units!r} != budget units {budget_cap.units!r}"
+        if cost.compute >= budget_cap.compute:
+            return f"compute {cost.compute} >= {budget_cap.compute}"
+        if cost.wall_clock_ms >= budget_cap.wall_clock_ms:
+            return f"wall_clock_ms {cost.wall_clock_ms} >= {budget_cap.wall_clock_ms}"
+        if (budget_cap.human_time_ms is not None and cost.human_time_ms is not None
+                and cost.human_time_ms >= budget_cap.human_time_ms):
+            return f"human_time_ms {cost.human_time_ms} >= {budget_cap.human_time_ms}"
+        return None
