@@ -102,6 +102,7 @@ Instantiated at **M8** now its precondition holds (cost is attributed and there 
 | **Acceptance criteria** | The chosen implementer clears the task's capability floor; among those, cost is minimized using attributed cost; nothing clears the floor → escalates (never routes below). The decision is auditable and reused on resume/retry. |
 | **Escalation rule** | No candidate clears the floor (`NoCapableImplementer`) → escalate to a human; the Optimizer never relaxes the floor to proceed. |
 | **Placement (YAGNI)** | Inserted only where the cost/capability spread pays for the routing — engaged with ≥2 candidates; a uniform pipeline gets no router (model §10). |
+| **Version status** | Routes only to `active` versions (the version registry, Build-Spec §2.4); a `rolled_back`/`suspended` version is never chosen — so the Auditor's suspension (M9) takes effect through the Optimizer. |
 
 ---
 

@@ -71,6 +71,7 @@ src/cell/
   autonomy.py           # AutonomyBoard — Board-ratified ceiling amendments (M6)
   steward.py            # Steward — drift/loop/cost quarantine + rollback (M7)
   optimize.py           # Optimizer — capability/cost-aware implementer routing (M8)
+  versions.py           # version registry (event-sourced) + per-version scorecard — the M9 precondition
   observe.py            # read-only run inspector over the durable event plane (python -m cell.observe)
   planes/
     memory.py           # event/memory plane — EventStore + Event/Checkpoint/Decision (M0)

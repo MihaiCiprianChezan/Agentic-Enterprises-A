@@ -93,6 +93,16 @@ cell = Cell.assemble(
 With fewer than two implementers (or no optimizer) the cell runs exactly as before — a uniform
 pipeline gets no router.
 
+Each wired version is registered (`cell.versions()`), and the Optimizer **never routes to a
+non-active version**. Suspend one and routing avoids it:
+
+```python
+cell.registry.set_status("light", "suspended")   # the Optimizer now skips "light"
+cell.version_stats()                              # per-version runs / pass / return / mean cost
+```
+
+This version registry + scorecard is the substrate the Auditor (M9) will rate and act on.
+
 ## 4. Run the live slice (a real agent → a real PR)
 
 A real CLI coding agent fills the Executor seat and opens an actual pull request. This performs

@@ -56,7 +56,7 @@ The model's full role set (§4) is collapsed to the minimum that still makes the
 | Verification (Verifier) | Yes | Independently scores the change against acceptance criteria, tests, lint, policy. | Must be independent of the Executor. This is the only inline gate. |
 | Steward | Minimal | Watches for drift/looping/runaway cost; can roll a flow back to a checkpoint. | Start as alerting + manual rollback; automate later. |
 | Optimizer | **Built (M8)** | M8 | Precondition now holds (attributed cost + capability/cost spread across implementers). Routes a Work item to the cheapest implementer clearing its constitutional capability floor; auditable, recovered on resume; engages only with ≥2 candidates (YAGNI). |
-| Auditor | **Deferred** | — | YAGNI (§11): nothing to compare until you run multiple versions. Add when versions start flying. |
+| Auditor | **Deferred** | M9 | YAGNI (§11): nothing to compare until you run multiple versions. **Precondition now built** — the versions enabler (`cell/versions.py`) makes role versions first-class, registered/statused, and per-version-scored. The Auditor (ratings + suspend-and-escalate) lands next, after a constitutional amendment (Art 3.4 forward-note). |
 | Board | Yes — pattern | Writes/owns the constitution; the human accountability anchor. | Can be one person (the model's "Board of one", §3). Wears the hat part-time. |
 
 The deferred roles are not designed out — the version registry stub (§4 below) leaves the Auditor's seam open, and the Optimizer slots between existing steps when needed.
@@ -176,7 +176,7 @@ Start every class at the §4 levels. Raise exactly one class (e.g. "write to the
 **M7 — Add the Steward (minimal).**
 Drift/loop/cost-runaway alerting + the ability to roll a flow back to a known-good checkpoint. Acceptance: an induced loop is detected and the flow is quarantined before it burns the budget cap.
 
-**Built past the core MVP:** the Optimizer (M8) — its precondition (capability/cost spread + attributed cost) is now met. **Still deferred (and that is correct):** Auditor + real version registry (M9, only when multiple versions run), any second cell / federation / supra-constitution (only when one cell is proven).
+**Built past the core MVP:** the Optimizer (M8); and the **versions enabler** — a real, event-sourced version registry (Build-Spec §2.4) with status + per-version scoring, the M9 precondition. **Still deferred (and that is correct):** the Auditor itself (M9 — ratings + suspend-and-escalate, after the Art 3.4 constitutional amendment), any second cell / federation / supra-constitution (only when one cell is proven).
 
 ---
 

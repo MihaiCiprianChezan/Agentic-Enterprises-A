@@ -103,7 +103,7 @@ class CellHandbrake:
                  governance: Optional[GovernanceCheck] = None,
                  recorder: Optional[TraceStore] = None, cost_model=None,
                  max_revisions: int = 2, clock=None,
-                 optimizer=None, implementers=None) -> None:
+                 optimizer=None, implementers=None, registry=None) -> None:
         self.director = director
         self.orchestrator = orchestrator
         self.executor = executor
@@ -117,6 +117,7 @@ class CellHandbrake:
         self.clock = clock
         self.optimizer = optimizer
         self.implementers = implementers or []
+        self.registry = registry
 
     # -- primitives -----------------------------------------------------------
 
@@ -302,14 +303,17 @@ class CellHandbrake:
             if chosen is not None:
                 return chosen.executor, chosen.id
             return self.executor, None   # recorded implementer is gone (re-assembled) — degrade, don't crash
+        # Only route to active versions — a rolled_back/suspended version is never chosen (the
+        # Auditor's suspension lever, M9). No active candidate clears the floor → escalate.
+        candidates = [im for im in self.implementers
+                      if self.registry is None or self.registry.status_of(im.id) == "active"]
         history = self.store.all_events()
-        costs = {im.id: c for im in self.implementers
-                 if (c := mean_cost_for(history, im.id)) is not None}
-        chosen = self.optimizer.select(item, self.implementers, costs)
+        costs = {im.id: c for im in candidates if (c := mean_cost_for(history, im.id)) is not None}
+        chosen = self.optimizer.select(item, candidates, costs)
         self.store.append(flow_id, "decision", OPTIMIZER_ACTOR,
                           {"stage": "route", "work_item_id": item.id, "chosen": chosen.id,
                            "floor": capability_floor(item.action_class),
-                           "costs": {im.id: costs.get(im.id, im.nominal_cost) for im in self.implementers}})
+                           "costs": {im.id: costs.get(im.id, im.nominal_cost) for im in candidates}})
         return chosen.executor, chosen.id
 
     def _do_item(self, flow_id, item, goal, injection, executor, implementer_id=None) -> Verdict:

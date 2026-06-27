@@ -26,6 +26,7 @@ cell has driven a real CLI coding agent to take a ticket to a real pull request.
 | **M6** | autonomy graduation by Board-ratified amendment (never automatic) |
 | **M7** | the Steward — drift/loop/cost quarantine + rollback |
 | **M8** | the Optimizer — route each work item to the cheapest implementer that clears its constitutional capability floor, by attributed cost (auditable, recovered on resume) |
+| **Versions** | first-class role versions — an event-sourced registry with status (active/rolled_back/suspended) + a per-version scorecard; the Optimizer never routes to a suspended version (the M9 Auditor precondition) |
 | **Composition** | one assembled `Cell` that demonstrates the §7 definition of done on stubs |
 | **Real runtime** | a real CLI coding agent (Claude Code by default) bound into the Executor seat |
 
