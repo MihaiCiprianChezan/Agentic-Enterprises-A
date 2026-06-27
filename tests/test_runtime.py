@@ -151,6 +151,8 @@ def test_deliver_opens_a_pr_through_perform():
                           repo_dir="/tmp/x", effect=fake_effect)
     assert url == "https://github.com/x/y/pull/1"
     assert calls["n"] == 1
+    assert any(e.kind == "action" and e.payload.get("idempotency_key")
+               for e in cell.store.read("f1"))  # the PR-open is on the durable trace
 
 
 def test_deliver_is_exactly_once_on_resume():
@@ -167,6 +169,26 @@ def test_deliver_is_exactly_once_on_resume():
     second = deliver_on_pass(cell, "f1", "feat/wi-1", **kw)  # a resume
     assert first == second == "https://github.com/x/y/pull/1"
     assert calls["n"] == 1  # the PR is never opened twice
+
+
+def test_deliver_does_not_reopen_a_pr_left_in_flight():
+    # at-most-once: if a prior attempt crashed mid gh-pr-create (ledger in_flight), a resume
+    # must NOT re-open the PR — it escalates instead.
+    from cell.effects.wrapper import IrreversibleInFlight, make_idempotency_key
+
+    cell = Cell.assemble()
+    key = make_idempotency_key("f9", "open_pr", {"branch": "feat/wi-1"})
+    cell.ledger.put_in_flight(key)  # a prior attempt that crashed mid-effect
+    calls = {"n": 0}
+
+    def fake_effect(intent):
+        calls["n"] += 1
+        return "https://github.com/x/y/pull/1"
+
+    with pytest.raises(IrreversibleInFlight):
+        deliver_on_pass(cell, "f9", "feat/wi-1", actor=ActorRef("Executor", "real-cli"),
+                        title="t", body="b", repo_dir="/tmp/x", effect=fake_effect)
+    assert calls["n"] == 0  # never re-opened
 
 
 def test_live_is_opt_in(capsys, monkeypatch):

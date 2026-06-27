@@ -40,7 +40,7 @@ def main() -> None:
         print("error: CELL_TARGET_DIR and CELL_TASK are required when CELL_LIVE=1.", file=sys.stderr)
         raise SystemExit(2)
     branch = os.environ.get("CELL_BRANCH", "cell/slice")
-    state_db = os.path.join(target, ".cell-state.db")
+    state_db = os.path.abspath(target).rstrip("/\\") + ".cell-state.db"
 
     cell = Cell.assemble(
         executor=RealExecutor(CliAgentRunner(CliAgentSpec.claude_code()), target, branch),

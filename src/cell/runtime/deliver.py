@@ -34,7 +34,10 @@ def deliver_on_pass(cell, flow_id: str, branch: str, *, actor: ActorRef, title: 
     key = make_idempotency_key(flow_id, "open_pr", {"branch": branch})
     action = ActionDescriptor(
         id=f"deliver-{flow_id}-{branch}", action_class="CLASS_VISIBLE_OUTPUT",
-        effect_kind="compensable",  # a PR is closeable, so compensable (not irreversible)
+        # a PR is a non-idempotent outside effect -> irreversible (at-most-once); a crash
+        # mid-create escalates on resume, never opening a second PR
+        effect_kind="irreversible",
         idempotency_key=key,
         intent={"branch": branch, "title": title, "body": body, "repo_dir": repo_dir})
-    return perform(action, actor, lambda a: effect(a.intent), cell.ledger, cell.governance)
+    return perform(action, actor, lambda a: effect(a.intent), cell.ledger, cell.governance,
+                   store=cell.store, flow_id=flow_id)

@@ -28,8 +28,9 @@ never part of CI and is never run by automated agents.
 5. **Result:** the agent edits a branch, the cell runs the tests, and on green it prints the PR
    URL. Re-running (or resuming after a kill) opens **no** second PR — the `perform()`/durable
    ledger guarantee on a real GitHub side effect.
-6. **Note:** the cell writes a `.cell-state.db` (its durable event store + ledger) inside the
-   target checkout — add `.cell-state.db` to the sandbox repo's `.gitignore` so it isn't committed.
+6. **Note:** the cell keeps its durable state file **beside** the target checkout (outside the
+   git tree), named `<target>.cell-state.db` — so it is never staged or committed and no
+   `.gitignore` entry is needed.
 
 ## Selecting another runtime
 Swap the spec: `CliAgentRunner(CliAgentSpec.codex())` (or `.gemini()` / `.pi()`). Those presets
