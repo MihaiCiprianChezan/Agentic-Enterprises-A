@@ -18,6 +18,7 @@ from cell.planes.memory import CostDelta, InMemoryEventStore
 from cell.planes.observability import (
     InMemoryTraceStore,
     TraceSpan,
+    TraceStore,
     digest,
     total_cost,
 )
@@ -131,6 +132,41 @@ def test_observability_is_optional():
     store, verdict = _run()  # no recorder, no cost model
     assert verdict.decision == "pass"
     assert total_cost(store.read("f1")).compute == 0  # no cost wired -> zero
+
+
+# --- review fixes: contract-typed store, unit safety -------------------------
+
+def test_trace_store_is_swappable():
+    # Depend on the contract, not the implementer (invariant #1): any store satisfying the
+    # TraceStore protocol works with run_flow, not just the reference one.
+    class ListTraceStore:
+        def __init__(self):
+            self._items = []
+
+        def record(self, span):
+            self._items.append(span)
+
+        def spans(self, flow_id):
+            return [s for s in self._items if s.flow_id == flow_id]
+
+    assert isinstance(InMemoryTraceStore(), TraceStore)
+    assert isinstance(ListTraceStore(), TraceStore)
+
+    alt = ListTraceStore()
+    store = InMemoryEventStore()
+    run_flow(_ticket(), RefDirector(), RefOrchestrator(), RefExecutor(), RefVerifier(),
+             store, "f1", recorder=alt, cost_model=_cost_model)
+    assert {s.step for s in alt.spans("f1")} == {"specify", "decompose", "execute", "verify"}
+
+
+def test_total_cost_rejects_mixed_units():
+    class R:
+        def __init__(self, cost):
+            self.cost = cost
+
+    items = [R(CostDelta(compute=1, units="tokens")), R(CostDelta(compute=1, units="usd"))]
+    with pytest.raises(ValueError):
+        total_cost(items)
 
 
 # --- digest helper -----------------------------------------------------------

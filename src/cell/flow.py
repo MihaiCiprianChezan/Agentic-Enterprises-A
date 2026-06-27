@@ -18,7 +18,7 @@ from typing import Optional
 
 from cell.domain.objects import ActorRef, Ticket, Verdict
 from cell.planes.memory import EventStore
-from cell.planes.observability import Clock, CostModel, InMemoryTraceStore, Tracer, digest
+from cell.planes.observability import Clock, CostModel, TraceStore, Tracer, digest
 from cell.roles.contracts import Director, Executor, Orchestrator, Verifier
 
 
@@ -50,7 +50,7 @@ def run_flow(
     flow_id: str,
     *,
     max_revisions: int = 2,
-    recorder: Optional[InMemoryTraceStore] = None,
+    recorder: Optional[TraceStore] = None,
     cost_model: Optional[CostModel] = None,
     clock: Optional[Clock] = None,
 ) -> Verdict:

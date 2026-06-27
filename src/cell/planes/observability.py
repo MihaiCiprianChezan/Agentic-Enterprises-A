@@ -16,7 +16,7 @@ import hashlib
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Iterable, Iterator, Literal, Optional
+from typing import Any, Callable, Iterable, Iterator, Literal, Optional, Protocol, runtime_checkable
 
 from cell.domain.objects import ActorRef
 from cell.planes.memory import CostDelta
@@ -41,6 +41,15 @@ class TraceSpan:
     parent_span: Optional[str] = None
 
 
+@runtime_checkable
+class TraceStore(Protocol):
+    """The observability plane's contract. Callers bind to this, never to a concrete store
+    (invariant #1), so a durable/OTel backend swaps in without touching the flow."""
+
+    def record(self, span: TraceSpan) -> None: ...
+    def spans(self, flow_id: str) -> list[TraceSpan]: ...
+
+
 class InMemoryTraceStore:
     """Reference trace store. A durable/OTel backend implements the same surface."""
 
@@ -62,22 +71,28 @@ def digest(obj: Any) -> str:
 def total_cost(records: Iterable[Any]) -> CostDelta:
     """Rule C1: a running cost is the sum of its records' cost. Accepts anything carrying a
     `.cost` (a TraceSpan or an Event); a missing/None cost counts as zero. `human_time_ms`
-    stays None unless at least one record reports it."""
+    stays None unless at least one record reports it.
+
+    Costs in different `units` cannot be summed — mixing them raises rather than silently
+    returning an ambiguous total."""
     compute = 0.0
     wall_clock_ms = 0
     human_time_ms: Optional[int] = None
-    units = "tokens"
+    units: Optional[str] = None
     for record in records:
         cost = getattr(record, "cost", None)
         if cost is None:
             continue
+        if units is None:
+            units = cost.units
+        elif cost.units != units:
+            raise ValueError(f"cannot sum costs across mixed units: {units!r} vs {cost.units!r}")
         compute += cost.compute
         wall_clock_ms += cost.wall_clock_ms
         if cost.human_time_ms is not None:
             human_time_ms = (human_time_ms or 0) + cost.human_time_ms
-        units = cost.units
     return CostDelta(compute=compute, wall_clock_ms=wall_clock_ms,
-                     human_time_ms=human_time_ms, units=units)
+                     human_time_ms=human_time_ms, units=units or "tokens")
 
 
 CostModel = Callable[[str], CostDelta]
@@ -105,7 +120,7 @@ class Tracer:
     runs the wrapped body, so a flow behaves identically with or without observability wired.
     """
 
-    def __init__(self, store: Optional[InMemoryTraceStore], flow_id: str,
+    def __init__(self, store: Optional[TraceStore], flow_id: str,
                  cost_model: Optional[CostModel] = None, clock: Optional[Clock] = None) -> None:
         self.store = store
         self.flow_id = flow_id
