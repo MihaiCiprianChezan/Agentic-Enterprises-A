@@ -60,3 +60,52 @@ def test_fake_runner_applies_the_change(tmp_path):
     result = runner.run("", str(tmp_path))
     assert result.returncode == 0
     assert (tmp_path / "f.txt").read_text() == "x"
+
+
+from datetime import datetime, timezone
+
+from cell.domain.objects import ActorRef, Criterion, WorkItem
+from cell.runtime.real_executor import ExecutorError, RealExecutor
+
+
+def _init_repo(path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=path, check=True)
+    Path(path, "README.md").write_text("seed\n")
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"], cwd=path, check=True)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "seed"],
+                   cwd=path, check=True)
+
+
+def _work_item() -> WorkItem:
+    return WorkItem(id="wi-1", goal_id="g-1", description="add greeting.txt",
+                    assigned_to=ActorRef("Executor", "x"), action_class="CLASS_OWN_WRITE",
+                    authority_level="L2",
+                    acceptance_criteria=[Criterion(id="c1", statement="file exists", kind="test")])
+
+
+def test_real_executor_commits_the_change_and_returns_an_output(tmp_path):
+    _init_repo(tmp_path)
+    runner = FakeRunner(lambda cwd: Path(cwd, "greeting.txt").write_text("hello"))
+    out = RealExecutor(runner, str(tmp_path), "feat/wi-1").execute(_work_item())
+    assert out.work_item_id == "wi-1"
+    assert out.artifact_ref.startswith("branch:feat/wi-1@")
+    log = subprocess.run(["git", "log", "--oneline", "-1"], cwd=tmp_path, capture_output=True, text=True)
+    assert "cell:" in log.stdout
+
+
+def test_real_executor_raises_when_the_agent_makes_no_change(tmp_path):
+    _init_repo(tmp_path)
+    runner = FakeRunner(lambda cwd: None)  # agent edited nothing
+    with pytest.raises(ExecutorError):
+        RealExecutor(runner, str(tmp_path), "feat/wi-1").execute(_work_item())
+
+
+def test_real_executor_raises_on_agent_failure(tmp_path):
+    _init_repo(tmp_path)
+
+    class FailingRunner:
+        def run(self, prompt, cwd):
+            return RunResult(returncode=2, stdout="", stderr="boom")
+
+    with pytest.raises(ExecutorError):
+        RealExecutor(FailingRunner(), str(tmp_path), "feat/wi-1").execute(_work_item())
