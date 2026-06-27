@@ -119,3 +119,45 @@ def test_reentry_reuses_the_recorded_route_assignment():
     _routed_cell(store).submit(_ticket(), "f")                        # re-enter with cheap working
     routes2 = [e for e in store.read("f") if e.payload.get("stage") == "route"]
     assert len(routes2) == 1                                          # reused, not re-routed
+
+
+class _MistaggedImpl:
+    """An executor whose Output version differs from its Implementer id — attribution must not rely
+    on the executor self-tagging; the handbrake tags the execute event with the routed id."""
+
+    def __init__(self) -> None:
+        self.actor = ActorRef("Executor", "wrong-version")
+
+    def execute(self, item):
+        return Output(id=f"out-{item.id}", work_item_id=item.id, artifact_ref="branch:x",
+                      produced_by=self.actor, trace_ref="t://x", produced_at=_T0,
+                      cost=CostDelta(compute=7))
+
+
+def test_execute_is_attributed_to_the_routed_implementer_not_the_executor_actor():
+    store = InMemoryEventStore()
+    imps = [Implementer("light", 1, _MistaggedImpl(), nominal_cost=1.0),
+            Implementer("strong", 3, _FakeImpl("strong"), nominal_cost=9.0)]
+    Cell.assemble(store=store, optimizer=CostAwareOptimizer(), implementers=imps).submit(_ticket(), "f")
+    execs = [e for e in store.read("f") if e.payload.get("stage") == "execute"]
+    assert execs[0].payload.get("implementer") == "light"   # tagged with the routed id
+    assert mean_cost_for(store.all_events(), "light") == 7.0  # attributed despite the actor mismatch
+
+
+def test_resume_with_a_missing_recorded_implementer_falls_back_without_crashing():
+    store = InMemoryEventStore()
+    with pytest.raises(RuntimeError):
+        _routed_cell(store, boom_cheap=True).submit(_ticket(), "f")   # route=cheap, then crash
+    other = [Implementer("other", 1, _FakeImpl("other"), 1.0),
+             Implementer("another", 1, _FakeImpl("another"), 2.0)]    # re-assembled WITHOUT "cheap"
+    v = Cell.assemble(store=store, optimizer=CostAwareOptimizer(), implementers=other).submit(_ticket(), "f")
+    assert v.decision == "pass"                                       # degraded gracefully, no KeyError
+
+
+def test_all_events_is_ordered_by_flow_then_seq():
+    store = InMemoryEventStore()
+    A = ActorRef("X", "v")
+    store.append("zzz", "decision", A, {"stage": "a"})
+    store.append("aaa", "decision", A, {"stage": "b"})
+    store.append("aaa", "decision", A, {"stage": "c"})
+    assert [(e.flow_id, e.seq) for e in store.all_events()] == [("aaa", 0), ("aaa", 1), ("zzz", 0)]

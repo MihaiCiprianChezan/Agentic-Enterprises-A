@@ -146,7 +146,8 @@ class InMemoryEventStore:
         return list(self._events.get(flow_id, []))
 
     def all_events(self) -> list[Event]:
-        return [ev for log in self._events.values() for ev in log]
+        events = [ev for log in self._events.values() for ev in log]
+        return sorted(events, key=lambda e: (e.flow_id, e.seq))   # match the Protocol + durable order
 
     def verify_chain(self, flow_id) -> bool:
         prev = "GENESIS"

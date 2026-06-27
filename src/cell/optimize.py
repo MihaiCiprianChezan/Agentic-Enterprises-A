@@ -53,9 +53,10 @@ class CostAwareOptimizer:
 
 
 def mean_cost_for(events, implementer_id: str) -> Optional[float]:
-    """The mean attributed `compute` cost of past `execute` events by this implementer (keyed on the
-    executor actor's `version`). None when there is no history (the caller falls back to nominal)."""
+    """The mean attributed `compute` cost of past `execute` events by this implementer. Attribution
+    is by the explicit `implementer` tag the handbrake records when it routes (authoritative), with
+    a fallback to the executor actor's `version`. None when there is no history (caller uses nominal)."""
     samples = [e.cost.compute for e in events
-               if e.payload.get("stage") == "execute"
-               and e.actor.version == implementer_id and e.cost is not None]
+               if e.payload.get("stage") == "execute" and e.cost is not None
+               and (e.payload.get("implementer") or e.actor.version) == implementer_id]
     return sum(samples) / len(samples) if samples else None
