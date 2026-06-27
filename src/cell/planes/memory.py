@@ -197,8 +197,10 @@ class DurableEventStore:
 
     # -- EventStore Protocol --------------------------------------------------
 
-    def append(self, flow_id, kind, actor, payload, cost=None) -> Event:
-        actor_json = json.dumps(asdict(actor) if not isinstance(actor, dict) else actor)
+    def append(self, flow_id, kind, actor: ActorRef, payload, cost=None) -> Event:
+        # The contract takes an ActorRef; require it so the returned Event.actor and the
+        # reloaded read() actor are the same type (asdict raises on anything else).
+        actor_json = json.dumps(asdict(actor))
         payload_json = json.dumps(payload, sort_keys=True, default=str)
         cost_json = None if cost is None else json.dumps(asdict(cost))
         at = datetime.now(timezone.utc)

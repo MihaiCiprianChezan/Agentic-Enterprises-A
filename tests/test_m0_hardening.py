@@ -86,6 +86,23 @@ def test_event_wiring_is_optional():
     assert perform(action, ACTOR, lambda a: "pr-1", ledger, GOV) == "pr-1"
 
 
+def test_effect_is_not_completed_if_the_audit_event_fails():
+    # Ordering guarantee: the action Event is appended BEFORE the effect is marked
+    # completed, so "completed" always implies the audit Event is durably recorded
+    # (R12). If the append fails, the effect stays recoverable rather than completed.
+    class FailingStore:
+        def append(self, *a, **k):
+            raise RuntimeError("event store down")
+
+    ledger = InMemoryEffectsLedger()
+    key, action = _action("idempotent")
+
+    with pytest.raises(RuntimeError):
+        perform(action, ACTOR, lambda a: "r", ledger, GOV, store=FailingStore(), flow_id="flow1")
+
+    assert ledger.get(key).status != "completed"  # recoverable on resume, not silently done
+
+
 # --- governance pre-check (R6) -----------------------------------------------
 
 def test_blocked_action_does_not_execute_or_record():

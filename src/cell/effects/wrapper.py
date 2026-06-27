@@ -151,11 +151,12 @@ def perform(
         ledger.mark_failed(key)
         raise
 
-    # 4. Record completion in the ledger and, when a store is wired, as an `action`
-    #    Event on the event plane (Build-Spec §4.2 step 4 / §6). The Event is appended
-    #    only on first completion — a cached resume returns above without re-appending,
-    #    so exactly-once extends to the log too. (Cost attribution is M3.)
-    ledger.mark_completed(key, result)
+    # 4. Record the `action` Event on the event plane (Build-Spec §4.2 step 4 / §6),
+    #    THEN mark the ledger completed. Order matters: marking completed is what makes
+    #    a resume short-circuit (step 2), so the audit Event must already be durable
+    #    before that — otherwise a crash in between would leave a completed effect with
+    #    no audit record (R12). A cached resume returns above without re-appending, so
+    #    exactly-once extends to the log. (Cost attribution is M3.)
     if store is not None and flow_id is not None:
         store.append(flow_id, "action", actor, {
             "action_id": action.id,
@@ -164,6 +165,7 @@ def perform(
             "idempotency_key": key,
             "result_digest": result,
         })
+    ledger.mark_completed(key, result)
     return result
 
 
@@ -245,7 +247,7 @@ class SqliteEffectsLedger:
                 "INSERT INTO effects (idempotency_key, status, attempts, at) "
                 "VALUES (?, 'in_flight', 1, ?) "
                 "ON CONFLICT(idempotency_key) DO UPDATE SET "
-                "status = 'in_flight', attempts = attempts + 1",
+                "status = 'in_flight', attempts = attempts + 1, at = excluded.at",
                 (key, now),
             )
         return self.get(key)
