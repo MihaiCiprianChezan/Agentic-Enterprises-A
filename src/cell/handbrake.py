@@ -144,7 +144,10 @@ class CellHandbrake:
                           {"stage": "clear_breakpoint", "bp_id": bp_id})
 
     def start(self, ticket: Ticket, flow_id: str) -> Union[Verdict, Paused]:
-        if self.store.read(flow_id):
+        # A flow has *started* once its specify decision is recorded — not merely when some event
+        # exists (a pre-start breakpoint writes one). Only a started flow re-enters (resumes).
+        if any(e.kind == "decision" and e.payload.get("stage") == "specify"
+               for e in self.store.read(flow_id)):
             return self._reenter(flow_id, ticket)  # re-invocation resumes, never re-derives the prefix
         tracer = self._tracer(flow_id)
         with tracer.span("specify", _actor_of(self.director, "Director"), "decision") as h:

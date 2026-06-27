@@ -50,6 +50,21 @@ def test_runner_sets_cost_from_the_specs_usage_parser(tmp_path):
     assert res.cost is not None and res.cost.compute == 7.0
 
 
+def test_runner_survives_a_throwing_usage_parser(tmp_path):
+    def boom(_out):
+        raise ValueError("bad usage shape")
+
+    spec = CliAgentSpec(argv_template=["python", "-c", "print('ok')"],
+                        permission_args=[], instruction_file="X", usage_parser=boom)
+    res = CliAgentRunner(spec).run("p", str(tmp_path))
+    assert res.returncode == 0 and res.cost is None      # best-effort: never fails the run
+
+
+def test_claude_usage_parser_tolerates_non_numeric_tokens():
+    parse = CliAgentSpec.claude_code().usage_parser
+    assert parse('{"usage":{"input_tokens":"oops","output_tokens":null}}') is None
+
+
 def test_real_executor_threads_runner_cost_onto_the_output(tmp_path):
     _init_repo(tmp_path)
 

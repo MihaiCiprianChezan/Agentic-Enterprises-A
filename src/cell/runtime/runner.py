@@ -40,8 +40,15 @@ def _claude_usage(stdout: str) -> Optional[CostDelta]:
     usage = data.get("usage") if isinstance(data, dict) else None
     if not isinstance(usage, dict):
         return None
-    tokens = (usage.get("input_tokens") or 0) + (usage.get("output_tokens") or 0)
-    return CostDelta(compute=float(tokens), units="tokens") if tokens else None
+
+    def _num(x) -> float:
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return 0.0
+
+    tokens = _num(usage.get("input_tokens")) + _num(usage.get("output_tokens"))
+    return CostDelta(compute=tokens, units="tokens") if tokens else None
 
 
 class RunnerError(Exception):
@@ -120,7 +127,10 @@ class CliAgentRunner:
                              timed_out=True)
         cost = None
         if proc.returncode == 0 and self.spec.usage_parser is not None:
-            cost = self.spec.usage_parser(proc.stdout or "")
+            try:
+                cost = self.spec.usage_parser(proc.stdout or "")
+            except Exception:
+                cost = None   # usage parsing is best-effort — it must never fail a successful run
         return RunResult(returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr,
                          cost=cost)
 

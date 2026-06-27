@@ -111,3 +111,13 @@ def test_reentry_of_a_crashed_flow_reuses_the_prefix_without_duplicating_it():
     assert v.decision == "pass"
     assert len([e for e in store.read("f") if e.payload.get("stage") == "specify"]) == 1  # not duplicated
     assert len([e for e in store.read("f") if e.payload.get("stage") == "execute"]) == 1
+
+
+def test_start_after_a_prestart_breakpoint_runs_the_fresh_prefix_not_reentry():
+    # A breakpoint set BEFORE start() writes an event, but the flow has not started — start() must
+    # still emit the fresh specify/decompose prefix, not mistake it for a re-entry.
+    store = InMemoryEventStore()
+    cell = Cell.assemble(store=store)
+    cell.handbrake.set_breakpoint("f", "pre-execute:other-item")   # event exists before start
+    cell.submit(_ticket(), "f")
+    assert len([e for e in store.read("f") if e.payload.get("stage") == "specify"]) == 1
