@@ -72,7 +72,11 @@ not each tool:
   `argv_template` (e.g. `["claude","-p","{prompt}"]`), `permission_args` (the flags that let an
   *unattended* run proceed without hanging on approval — and without over-permitting), and
   `instruction_file`. Presets are a few lines each: `claude_code()` (default/primary),
-  `codex()`, `gemini()`, `pi()`.
+  `codex()`, `gemini()`, `pi()`. **Verification status:** Claude Code is exercised *live*
+  end-to-end (the real-PR demo); the other presets are config-complete and run through the same
+  (unit-tested) runner, but their exact flags are best-effort against a fast-moving landscape
+  and are live-confirmed on first real use (and require that CLI installed/authenticated). A
+  drifted preset is a few-line fix — the point of `CliAgentSpec`.
 - **`CliAgentRunner`** — one runner driven by a `CliAgentSpec`: render argv, run in `cwd`,
   capture stdout/exit. **Athletic robustness (required, per the landscape's known pitfalls):**
   surface a non-zero exit, an empty/no-op result, and a missing binary clearly; respect a
