@@ -259,41 +259,48 @@ class CellHandbrake:
             return existing  # idempotent resume: already executed, do not re-run
 
         tracer = self._tracer(flow_id)
-        if injection is not None and injection["value"].get("type") == "edited_output":
-            v = injection["value"]
-            output = Output(id=v["output_id"], work_item_id=item.id,
-                            artifact_ref=v["artifact_ref"], produced_by=injection["actor"],
-                            trace_ref="trace://injected", produced_at=_now())
-        else:
-            with tracer.span("execute", _actor_of(self.executor, "Executor"), "tool_call"):
-                output = self.executor.execute(item)
+        attempt = 0
+        while True:
+            if injection is not None and injection["value"].get("type") == "edited_output":
+                v = injection["value"]
+                output = Output(id=v["output_id"], work_item_id=item.id,
+                                artifact_ref=v["artifact_ref"], produced_by=injection["actor"],
+                                trace_ref="trace://injected", produced_at=_now())
+            else:
+                with tracer.span("execute", _actor_of(self.executor, "Executor"), "tool_call"):
+                    output = self.executor.execute(item)
 
-        # The external L1/L2 action goes through the idempotency wrapper — exactly-once on
-        # resume, never re-fired after completion (invariant #4 / M0).
-        key = make_idempotency_key(flow_id, f"execute:{item.id}", {"output_id": output.id})
-        action = ActionDescriptor(id=f"act-{item.id}", action_class=item.action_class,
-                                  effect_kind="compensable", idempotency_key=key,
-                                  intent={"output_id": output.id})
-        perform(action, _actor_of(self.executor, "Executor"),
-                lambda _a: output.artifact_ref, self.ledger, self.governance,
-                store=self.store, flow_id=flow_id)
+            # The external L1/L2 action goes through the idempotency wrapper — exactly-once on
+            # resume, never re-fired after completion (invariant #4 / M0).
+            key = make_idempotency_key(flow_id, f"execute:{item.id}", {"output_id": output.id})
+            action = ActionDescriptor(id=f"act-{item.id}", action_class=item.action_class,
+                                      effect_kind="compensable", idempotency_key=key,
+                                      intent={"output_id": output.id})
+            perform(action, _actor_of(self.executor, "Executor"),
+                    lambda _a: output.artifact_ref, self.ledger, self.governance,
+                    store=self.store, flow_id=flow_id)
 
-        self.store.append(flow_id, "action", output.produced_by,
-                          {"stage": "execute", "output_id": output.id,
-                           "work_item_id": output.work_item_id, "artifact_ref": output.artifact_ref},
-                          cost=self._ecost("execute"))
+            self.store.append(flow_id, "action", output.produced_by,
+                              {"stage": "execute", "output_id": output.id,
+                               "work_item_id": output.work_item_id, "artifact_ref": output.artifact_ref},
+                              cost=self._ecost("execute"))
 
-        with tracer.span("verify", _actor_of(self.verifier, "Verifier"), "verification"):
-            verdict = self.verifier.verify(output, goal)
-        if verdict.verified_by == output.produced_by:
-            raise NonIndependentVerification(
-                f"verified_by {verdict.verified_by} must differ from produced_by {output.produced_by}"
-            )
-        self.store.append(flow_id, "verdict", verdict.verified_by,
-                          {"stage": "verify", "verdict_id": verdict.id, "decision": verdict.decision,
-                           "output_id": output.id, "work_item_id": output.work_item_id},
-                          cost=self._ecost("verify"))
-        return verdict
+            with tracer.span("verify", _actor_of(self.verifier, "Verifier"), "verification"):
+                verdict = self.verifier.verify(output, goal)
+            if verdict.verified_by == output.produced_by:
+                raise NonIndependentVerification(
+                    f"verified_by {verdict.verified_by} must differ from produced_by {output.produced_by}"
+                )
+            self.store.append(flow_id, "verdict", verdict.verified_by,
+                              {"stage": "verify", "verdict_id": verdict.id, "decision": verdict.decision,
+                               "output_id": output.id, "work_item_id": output.work_item_id},
+                              cost=self._ecost("verify"))
+
+            if verdict.decision == "return" and attempt < self.max_revisions:
+                attempt += 1
+                injection = None  # only consume the injection on the first attempt
+                continue  # produce -> score -> revise loop (mirrors flow._produce_and_verify)
+            return verdict
 
     def _existing_verdict(self, flow_id, item) -> Optional[Verdict]:
         events = self.store.read(flow_id)

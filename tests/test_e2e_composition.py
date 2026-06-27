@@ -71,3 +71,73 @@ def test_dramatic_path_takeover_via_the_handbrake():
     exec_event = next(e for e in cell.events("f1") if e.payload.get("stage") == "execute")
     assert exec_event.payload["artifact_ref"] == "branch://corrected"
     assert exec_event.actor == human
+
+
+class L0Orchestrator:
+    actor = ActorRef(role="Orchestrator", version="l0-orch")
+
+    def decompose(self, goal):
+        return [WorkItem(id=f"wi-{goal.id}", goal_id=goal.id, description="push to main",
+                         assigned_to=EXECUTOR, action_class="CLASS_HIGH_BLAST",
+                         authority_level="L0", acceptance_criteria=list(goal.acceptance_criteria))]
+
+
+class ReturnVerifier:
+    """Always returns 'return' -> induces a produce->revise loop (the runaway signal)."""
+    actor = ActorRef(role="Verifier", version="ref-v0")
+
+    def verify(self, output, goal):
+        return Verdict(id=f"v-{output.id}", output_id=output.id, decision="return",
+                       scores=[CriterionScore(criterion_id="c", result="unclear")],
+                       reason="needs revision", verified_by=self.actor, verified_at=_T0)
+
+
+def test_kill_and_resume_is_safe_across_a_fresh_controller():
+    store, ledger = InMemoryEventStore(), InMemoryEffectsLedger()
+    calls = {"n": 0}
+
+    class CountingExecutor:
+        actor = EXECUTOR
+
+        def execute(self, item):
+            calls["n"] += 1
+            return RefExecutor().execute(item)
+
+    Cell.assemble(orchestrator=L1Orchestrator(), executor=CountingExecutor(),
+                  store=store, ledger=ledger).submit(_ticket(), "f1")  # pauses at L1
+
+    # a fresh cell over the SAME durable plane resumes from the checkpoint
+    fresh = Cell.assemble(orchestrator=L1Orchestrator(), executor=CountingExecutor(),
+                          store=store, ledger=ledger)
+    verdict = fresh.resume("f1")
+    assert verdict.decision == "pass"
+    assert calls["n"] == 1  # the external effect ran exactly once
+
+
+def test_out_of_policy_action_is_blocked_and_traceable():
+    calls = {"n": 0}
+
+    class CountingExecutor:
+        actor = EXECUTOR
+
+        def execute(self, item):
+            calls["n"] += 1
+            return RefExecutor().execute(item)
+
+    cell = Cell.assemble(orchestrator=L0Orchestrator(), executor=CountingExecutor())
+    with pytest.raises(GovernanceBlocked):
+        cell.submit(_ticket(), "f1")
+    assert calls["n"] == 0
+    block = [e for e in cell.governance_log("f1") if e.payload.get("decision") == "block"]
+    assert block and "Art. 4" in block[-1].payload["reason"]  # traces to a clause
+
+
+def test_steward_quarantines_an_induced_loop_before_the_cap():
+    cell = Cell.assemble(verifier=ReturnVerifier(), max_revisions=5, loop_threshold=3,
+                         cost_model=lambda stage: CostDelta(compute=100))
+    cell.submit(_ticket(), "f1")  # L2 item, loops on 'return' up to max_revisions
+    budget = BudgetCap(compute=10_000, wall_clock_ms=15 * 60 * 1000)
+    action = cell.assess("f1", budget)
+    assert action.kind == "quarantine"
+    assert action.rule == "R8"
+    assert cell.cost("f1").compute < budget.compute  # quarantined before the cap
