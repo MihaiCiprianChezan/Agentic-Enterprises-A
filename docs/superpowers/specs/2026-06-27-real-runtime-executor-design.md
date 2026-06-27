@@ -144,10 +144,17 @@ The full existing suite stays green, deterministic, and offline.
    `claude -p` change, verified by real tests, and a re-run/resume opens **no** second PR.
 4. No existing component was modified to achieve it (thin: adapters only).
 
-## 9. Anti-fat guardrails (explicit)
+## 9. Athletic, not skeletal (the shape guardrail)
 
-- `RealExecutor`/`RealVerifier`/`Runner` each do one thing; no options, modes, or speculative
-  config beyond what §3 lists.
-- No new `Cell`/handbrake seam — delivery is `perform()`-on-pass in the live runner.
-- No retry/queue/scheduler/parallelism. One ticket, one run.
-- If a piece starts growing, that is the signal it is doing too much — split or cut, do not fatten.
+The target is **athletic**: lean and capable, well-shaped, no fat — *not* stripped-down or
+anemic. Each component does its job *well*.
+
+- **No fat:** `RealExecutor`/`RealVerifier`/`Runner` each have one responsibility; no
+  speculative options, modes, retries, queues, schedulers, or parallelism. One ticket, one run.
+  No new `Cell`/handbrake seam — delivery is `perform()`-on-pass in the live runner.
+- **But not skeletal:** each adapter is robust — real error handling (a `claude -p` non-zero
+  exit, an empty/no-op diff, a `gh`/push failure, a missing `pytest` are surfaced clearly, not
+  swallowed), clean interfaces bound to Protocols (invariant #1), and meaningful return values.
+  Capability is never sacrificed for smallness.
+- If a piece grows past its one job, it is fattening — split it. If a piece can't handle a real
+  failure mode, it is skeletal — flesh it out. Aim between: athletic.
