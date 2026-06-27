@@ -85,6 +85,8 @@ A practical way to force the crash window: an `execute` callable that writes its
 ## When M0 is done
 
 Both exactly-once tests pass against durable backends, and the kill-and-resume test is green.
-That retires the model's #1 riskiest assumption on something real. Next milestone: M1 (adopt a
-durable-execution engine if you want its checkpointer/replay for free) → then M2 role contracts.
+That retires the model's #1 riskiest assumption on something real. Next milestone: M1 — charter
+the Board and instantiate the constitution (`Cell-Constitution.md`) → then M2 role contracts.
+(Adopting a durable-execution engine for checkpointer/replay is an optional enhancement to these
+M0 foundations, not a milestone of its own; it most directly serves the M4 handbrake's replay.)
 See `One-Cell-Build-Plan.md §6`.

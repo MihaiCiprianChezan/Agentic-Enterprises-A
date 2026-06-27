@@ -62,7 +62,7 @@ src/cell/
   domain/objects.py     # wire schema: Ticket, Goal, WorkItem, Output, Verdict (Build-Spec §1)
   roles/contracts.py    # the five role Protocols (M2)
   planes/
-    memory.py           # event/memory plane — EventStore + Event/Checkpoint/Decision (M0/M1)
+    memory.py           # event/memory plane — EventStore + Event/Checkpoint/Decision (M0)
     observability.py     # (M3) — trace + cost  [to add]
     governance.py        # action-class registry + rules R1–R12 (M5; permissive stub for M0)
     control.py           # the Handbrake interface (M4)
@@ -90,6 +90,11 @@ pytest            # structural tests pass; the two exactly-once tests xfail unti
 
 ## Build order after M0
 
-M1 externalize state (durable engine) → M2 role contracts → M3 observability →
-M4 handbrake on the one flow → M5 compile governance (R1–R12) → M6 graduate autonomy →
-M7 minimal Steward. See `docs/One-Cell-Build-Plan.md §6`.
+M1 charter the Board & write the constitution (instantiate `docs/Cell-Constitution.md`) →
+M2 role contracts → M3 observability → M4 handbrake on the one flow →
+M5 compile governance (R1–R12) → M6 graduate autonomy → M7 minimal Steward.
+See `docs/One-Cell-Build-Plan.md §6` (the authoritative milestone order).
+
+> Note: adopting a durable-execution engine (checkpointer/replay) is a **tooling choice**
+> that implements the M0 checkpointer and the M4 handbrake replay — not a milestone of its
+> own. The M0 foundations already externalize state into the durable event store + ledger.

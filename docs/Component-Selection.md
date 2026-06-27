@@ -21,7 +21,7 @@ Tool names are examples as of writing and move fast — treat the **capability c
 | **Event/memory plane** (Build-Spec §2) — durable, append-only, hash-chained, resumable state | An append-only, queryable, durable store you can content-hash | A single relational DB (Postgres/SQLite) with an append-only events table; a purpose-built event store; an embedded KV+log | **SQLite or Postgres, one `events` table.** For one cell this is plenty; the hash chain is application-level. Don't reach for Kafka/EventStoreDB yet. |
 | **Idempotent-action wrapper** (Build-Spec §4) — exactly-once / at-most-once side effects across resume | Either a durable-execution engine that gives you this for free, *or* an explicit effects-ledger you implement | Durable-execution engine (Temporal, Restate, DBOS, Inngest); or a hand-rolled effects-ledger table keyed by idempotency key | **Hand-rolled effects ledger for the M0 spike** (proves the mechanic in ~100 lines), then **adopt a durable-execution engine** when you build the real flow, so you don't reinvent checkpointing. |
 
-The M0 decision in one line: prove the wrapper against a plain SQLite events+effects table first; then decide whether a durable-execution engine replaces your hand-rolled checkpointer for M1+. Building the spike by hand first means you understand exactly what the engine is doing for you.
+The M0 decision in one line: prove the wrapper against a plain SQLite events+effects table first; then decide whether a durable-execution engine replaces your hand-rolled checkpointer in a later milestone (it most directly serves the M4 handbrake's replay). Building the spike by hand first means you understand exactly what the engine is doing for you.
 
 ---
 
@@ -29,7 +29,7 @@ The M0 decision in one line: prove the wrapper against a plain SQLite events+eff
 
 | Plane / need | Milestone | Capability to shop for | Representative options | Default |
 |---|---|---|---|---|
-| **Durable execution / checkpointer** | M1, M4 | Pause/resume a workflow from exact state; survive process death; deterministic replay | Temporal · Restate · DBOS · Inngest · LangGraph persistence | A **durable-execution engine** (Temporal-class). It directly provides Build-Spec §2.2 checkpoints + §4 retries + Handbrake replay — the single highest-leverage adoption. |
+| **Durable execution / checkpointer** | M0 (optional), M4 | Pause/resume a workflow from exact state; survive process death; deterministic replay | Temporal · Restate · DBOS · Inngest · LangGraph persistence | A **durable-execution engine** (Temporal-class). It directly provides Build-Spec §2.2 checkpoints + §4 retries + Handbrake replay — the single highest-leverage adoption. |
 | **Observability + cost** | M3 | Session-level trace capture, per-step cost attribution, loop/anomaly signal | OpenTelemetry (GenAI semconv) as the wire format + a backend: Langfuse · Arize Phoenix · Braintrust · LangSmith | **OpenTelemetry + one backend.** Emit OTel spans (Build-Spec §3.1) so you are not locked to a vendor; pick the backend for the UI. |
 | **Governance / policy engine** | M5 | Per-action rule evaluation before effect, with an audit log, rules as data | Open Policy Agent (Rego) · AWS Cedar · Oso · a small in-process rule evaluator | For **12 rules over 8 classes, a small in-process evaluator is enough** and keeps the rules hand-validatable (Build-Spec §5.4). Reach for OPA/Cedar only when the rule set outgrows hand-validation. |
 | **Agent runtime** | M2 | Run the role implementations; tool calling; structured outputs | Any agent framework or a thin direct-SDK harness | Keep roles as **plain implementations behind the §contracts interfaces**; the framework is a detail bound to the contract, swappable (invariant #1). Don't let a framework dictate the architecture. |
@@ -43,7 +43,7 @@ The M0 decision in one line: prove the wrapper against a plain SQLite events+eff
 Because "pick concrete tools" eventually has to happen, here are two coherent end-states. Both satisfy every spec guarantee; pick the row that matches your operational comfort.
 
 **A — Managed / batteries-included (fewer moving parts):**
-Durable-execution engine for state+checkpoint+retry · its built-in event history as the memory plane · OpenTelemetry → Langfuse for traces · in-process rule evaluator for governance · CLI handbrake. Fewest components, fastest to a running M1.
+Durable-execution engine for state+checkpoint+retry · its built-in event history as the memory plane · OpenTelemetry → Langfuse for traces · in-process rule evaluator for governance · CLI handbrake. Fewest components, fastest to a running cell.
 
 **B — Composable / own-your-primitives (more control):**
 Postgres event store (append-only, hash-chained) · application-level checkpointer · explicit effects ledger · OpenTelemetry → Phoenix · OPA for governance · web handbrake. More to wire, but every layer is independently inspectable and swappable — closer to the spec's "own the side you control" stance (invariant #4).
