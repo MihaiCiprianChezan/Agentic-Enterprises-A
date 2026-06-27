@@ -289,15 +289,17 @@ class CellHandbrake:
                                    "artifact_ref": output.artifact_ref, "attempt": attempt},
                                   cost=self._ecost("execute"))
 
-                # The external L1/L2 action goes through the idempotency wrapper — exactly-once on
-                # resume, never re-fired after completion (invariant #4 / M0).
-                key = make_idempotency_key(flow_id, f"execute:{item.id}", {"output_id": output.id})
-                action = ActionDescriptor(id=f"act-{item.id}", action_class=item.action_class,
-                                          effect_kind="compensable", idempotency_key=key,
-                                          intent={"output_id": output.id})
-                perform(action, _actor_of(self.executor, "Executor"),
-                        lambda _a: output.artifact_ref, self.ledger, self.governance,
-                        store=self.store, flow_id=flow_id)
+            # The external L1/L2 action goes through the idempotency wrapper. It runs on BOTH the
+            # fresh and the resumed path, so a crash that wrote the marker but not the effect does
+            # not skip the effect on resume (invariant #4). Keyed by output.id, so a completed
+            # effect returns cached and is never re-fired (M0).
+            key = make_idempotency_key(flow_id, f"execute:{item.id}", {"output_id": output.id})
+            action = ActionDescriptor(id=f"act-{item.id}", action_class=item.action_class,
+                                      effect_kind="compensable", idempotency_key=key,
+                                      intent={"output_id": output.id})
+            perform(action, _actor_of(self.executor, "Executor"),
+                    lambda _a: output.artifact_ref, self.ledger, self.governance,
+                    store=self.store, flow_id=flow_id)
 
             with tracer.span("verify", _actor_of(self.verifier, "Verifier"), "verification"):
                 verdict = self.verifier.verify(output, goal)
