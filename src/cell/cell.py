@@ -131,3 +131,9 @@ class Cell:
         """Run the Auditor: rate every version, emit audit records, and return the ratings (M9b).
         Read + report only — it never suspends or modifies anything (that is 9c)."""
         return self.auditor.report()
+
+    def enforce(self, now=None):
+        """Run the Auditor's suspend-and-escalate breaker (M9c): suspend versions rated dangerous
+        (rate-limited), open the SLA for a critical suspension, and escalate a stuck one. Returns the
+        BreakerResult. It never reinstates."""
+        return self.auditor.enforce(now)

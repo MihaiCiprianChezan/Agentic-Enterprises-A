@@ -150,6 +150,14 @@ def key_fact(ev: Event) -> str:
             return f"regression alert · {p.get('version', '?')}"
         if st == "danger":
             return f"DANGER · {p.get('version', '?')}"
+        if st == "suspend":
+            return f"SUSPEND {p.get('version', '?')}"
+        if st == "sla_open":
+            return f"SLA opened {p.get('version', '?')} (due {p.get('deadline', '?')})"
+        if st == "sla_missed":
+            return f"SLA-MISSED → break-glass {p.get('version', '?')}"
+        if st == "escalate_unsuspended":
+            return f"escalate (rate-limited) {p.get('version', '?')}"
         return st or "audit"
     if k == "governance":
         lvl = p.get("authority_level", p.get("level"))  # handbrake gate vs RuleSetGovernance

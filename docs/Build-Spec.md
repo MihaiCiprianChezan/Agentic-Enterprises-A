@@ -169,9 +169,11 @@ non-`active` (rolled_back / suspended) version (`suspended` is the Auditor's lev
 field outcome + cost is scored by `version_stats` (runs / pass / return / mean cost) — the
 raw signal the **Auditor** rates. The Auditor (M9b, `cell/auditor.py`) rates each version
 (`unproven`/`healthy`/`regressed`/`dangerous`) into a per-role fitness leaderboard and writes audit
-records (rating / regression / danger) on a reserved **`__audit__`** trail (a `version`/`audit`-kind
-event flow). Danger is governed by Article 11 (a safety breach only). The suspend-and-escalate
-breaker that acts on a `dangerous` rating is M9c (still deferred).
+records (rating / regression / danger, and the M9c breaker acts: suspend / sla_open / sla_missed /
+escalate_unsuspended) on a reserved **`__audit__`** trail (a `version`/`audit`-kind event flow).
+Danger is governed by Article 11 (a safety breach only). The **suspend-and-escalate breaker** is built
+(M9c, `Auditor.enforce`): it suspends a `dangerous` version within `SUSPENSION_POLICY` (rate-limited,
+24h SLA → break-glass) and never reinstates — completing M9.
 
 ---
 

@@ -11,11 +11,12 @@ is 9c (the breaker), and reinstatement is never an agent's to do.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from cell.domain.objects import ActorRef
 from cell.planes.governance import SUSPENSION_POLICY
-from cell.versions import version_stats
+from cell.versions import VERSIONS_FLOW, version_stats
 
 AUDIT_TRAIL = "__audit__"
 AUDITOR_ACTOR = ActorRef("Auditor", "ref")
@@ -31,6 +32,14 @@ class VersionRating:
     verdict: str                       # unproven | healthy | regressed | dangerous
     vs_predecessor: Optional[str] = None   # "better" | "worse" | None
     reasons: list = field(default_factory=list)
+
+
+@dataclass
+class BreakerResult:
+    suspended: list = field(default_factory=list)        # versions suspended this pass
+    escalated: list = field(default_factory=list)        # dangerous but rate-limited → escalated, not suspended
+    sla_opened: list = field(default_factory=list)       # critical suspensions that opened a 24h SLA
+    breakglass: list = field(default_factory=list)       # SLAs that expired while still suspended
 
 
 class Auditor:
@@ -107,6 +116,83 @@ class Auditor:
                 self.store.append(AUDIT_TRAIL, "audit", AUDITOR_ACTOR, {
                     "stage": "danger", "version": r.version, "reasons": list(r.reasons)})
         return ratings
+
+    # -- the breaker (the one governed ACTION — M9c) --------------------------
+
+    def enforce(self, now: Optional[datetime] = None) -> BreakerResult:
+        """Suspend versions rated `dangerous`, bounded by the governed `SUSPENSION_POLICY`
+        (Constitution Art 11): rate-limited (excess dangerous are escalated, not auto-suspended — no
+        cascade); a critical suspension (no other active version of the role) opens the 24h SLA; an
+        expired SLA still suspended escalates to break-glass. It NEVER reinstates — un-pause is a
+        human/Steward act. Deterministic under an injected `now`."""
+        now = now or datetime.now(timezone.utc)
+        ratings = self.rate()
+        audit = self.store.read(AUDIT_TRAIL)
+        sla_hours = SUSPENSION_POLICY["response_sla_hours"]
+        max_per = SUSPENSION_POLICY["max_suspensions_per_window"]
+        window_h = SUSPENSION_POLICY["rate_limit_window_hours"]
+        result = BreakerResult()
+
+        # 1. Miss sweep first: an open SLA past its deadline whose version is still suspended (not
+        # reinstated) escalates to break-glass — the safety valve so a stuck suspension surfaces.
+        for version, deadline in self._open_slas().items():
+            if deadline < now and self.registry.status_of(version) == "suspended":
+                self._log("sla_missed", version, now)
+                result.breakglass.append(version)
+
+        # 2. Suspend new dangerous (active) versions, within the rate limit.
+        dangerous = [v for v, r in ratings.items()
+                     if r.verdict == "dangerous" and self.registry.status_of(v) == "active"]
+        headroom = max(0, max_per - self._recent_suspensions(audit, now, window_h))
+        registered = {v for (_r, v) in self.registry.records()}
+        for version in dangerous[:headroom]:
+            if version not in registered:
+                # a version seen only in field activity must be registered first, or set_status has
+                # no record to update and the suspension would not stick (it would re-suspend forever).
+                self.registry.register(ratings[version].role, version)
+            self.registry.set_status(version, "suspended")   # the Optimizer now skips it
+            self._log("suspend", version, now, reason=list(ratings[version].reasons))
+            result.suspended.append(version)
+            if self._critical(ratings[version].role, version):
+                self._log("sla_open", version, now,
+                          deadline=(now + timedelta(hours=sla_hours)).isoformat())
+                result.sla_opened.append(version)
+        for version in dangerous[headroom:]:   # rate-limited excess → escalate (no cascade), not suspend
+            self._log("escalate_unsuspended", version, now)
+            result.escalated.append(version)
+        return result
+
+    def _log(self, stage: str, version: str, now: datetime, **extra) -> None:
+        self.store.append(AUDIT_TRAIL, "audit", AUDITOR_ACTOR,
+                          {"stage": stage, "version": version, "ts": now.isoformat(), **extra})
+
+    def _open_slas(self) -> dict:
+        """version -> SLA deadline, for SLAs still open. An SLA closes on a recorded miss OR on
+        reinstatement (a registry status→active for the version) — a human responding resolves it, so
+        a later re-suspension can't trigger the stale old SLA. Folded in append order across trails."""
+        sla_events = self.store.read(AUDIT_TRAIL)
+        reinstatements = [e for e in self.store.read(VERSIONS_FLOW)
+                          if e.payload.get("stage") == "status" and e.payload.get("status") == "active"]
+        out: dict = {}
+        for e in sorted(sla_events + reinstatements, key=lambda ev: (ev.at, ev.seq)):
+            p = e.payload
+            if p.get("stage") == "sla_open":
+                out[p["version"]] = datetime.fromisoformat(p["deadline"])
+            elif p.get("stage") == "sla_missed" or (p.get("stage") == "status"
+                                                    and p.get("status") == "active"):
+                out.pop(p["version"], None)   # missed, or reinstated (resolved) → closed
+        return out
+
+    @staticmethod
+    def _recent_suspensions(audit, now: datetime, window_h: int) -> int:
+        cutoff = now - timedelta(hours=window_h)
+        return sum(1 for e in audit if e.payload.get("stage") == "suspend"
+                   and datetime.fromisoformat(e.payload["ts"]) > cutoff)
+
+    def _critical(self, role: str, version: str) -> bool:
+        """True when suspending `version` leaves its role with no other active version."""
+        return not any(v != version and self.registry.status_of(v) == "active"
+                       for (r, v) in self.registry.records() if r == role)
 
     # -- helpers --------------------------------------------------------------
 
