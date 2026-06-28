@@ -79,6 +79,16 @@ def test_timeline_shows_version_registry_events(tmp_path):
     assert "status exec-v2 → suspended" in out
 
 
+def test_timeline_shows_breaker_acts(tmp_path):
+    store = DurableEventStore(str(tmp_path / "state.db"))
+    A = ActorRef("Auditor", "ref")
+    store.append("__audit__", "audit", A, {"stage": "suspend", "version": "risky", "ts": "t"})
+    store.append("__audit__", "audit", A, {"stage": "sla_missed", "version": "risky", "ts": "t"})
+    out = format_timeline(store.read("__audit__"))
+    assert "SUSPEND risky" in out
+    assert "SLA-MISSED → break-glass risky" in out
+
+
 def test_timeline_shows_auditor_ratings(tmp_path):
     store = DurableEventStore(str(tmp_path / "state.db"))
     store.append("__audit__", "audit", ActorRef("Auditor", "ref"),

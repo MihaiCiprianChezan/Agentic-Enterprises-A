@@ -3,10 +3,14 @@ faithful to Constitution Art 11 (danger = safety breach; collapse = regressed/al
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from cell.auditor import AUDIT_TRAIL, Auditor
 from cell.domain.objects import ActorRef
 from cell.planes.memory import CostDelta, InMemoryEventStore
 from cell.versions import VersionRegistry
+
+_T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 _E = lambda v: ActorRef("Executor", v)
 _V = ActorRef("Verifier", "ref")
@@ -26,6 +30,110 @@ def _seed_runs(store, flow, version, n_pass, n_total):
 
 def _auditor(store):
     return Auditor(store, VersionRegistry(store))
+
+
+def _seed_dangerous(store, flow, version):
+    _seed_runs(store, flow, version, n_pass=5, n_total=5)
+    store.append(flow, "escalation", ActorRef("Steward", "ref"), {"stage": "quarantine"})
+
+
+# --- M9c: the suspend-and-escalate breaker -----------------------------------
+
+def test_enforce_suspends_a_dangerous_version():
+    store = InMemoryEventStore()
+    reg = VersionRegistry(store)
+    reg.register("Executor", "risky")
+    _seed_dangerous(store, "fq", "risky")
+    result = Auditor(store, reg).enforce(now=_T0)
+    assert "risky" in result.suspended
+    assert reg.status_of("risky") == "suspended"
+    acts = [e for e in store.read(AUDIT_TRAIL) if e.payload.get("stage") == "suspend"]
+    assert acts and acts[0].payload["version"] == "risky"
+
+
+def test_enforce_does_not_suspend_a_healthy_version():
+    store = InMemoryEventStore()
+    reg = VersionRegistry(store)
+    reg.register("Executor", "good")
+    _seed_runs(store, "f", "good", n_pass=5, n_total=5)
+    Auditor(store, reg).enforce(now=_T0)
+    assert reg.status_of("good") == "active"   # only danger suspends
+
+
+def test_rate_limit_suspends_one_and_escalates_the_rest_no_cascade():
+    store = InMemoryEventStore()
+    reg = VersionRegistry(store)
+    reg.register("Executor", "d1")
+    reg.register("Executor", "d2")
+    _seed_dangerous(store, "f1", "d1")
+    _seed_dangerous(store, "f2", "d2")
+    result = Auditor(store, reg).enforce(now=_T0)   # max_suspensions_per_window == 1
+    assert len(result.suspended) == 1 and len(result.escalated) == 1
+    assert reg.status_of(result.suspended[0]) == "suspended"
+    assert reg.status_of(result.escalated[0]) == "active"   # rate-limited, NOT suspended
+
+
+def test_a_critical_suspension_opens_an_sla():
+    store = InMemoryEventStore()
+    reg = VersionRegistry(store)
+    reg.register("Executor", "solo")   # the only Executor version
+    _seed_dangerous(store, "f", "solo")
+    result = Auditor(store, reg).enforce(now=_T0)
+    assert "solo" in result.sla_opened
+    assert [e for e in store.read(AUDIT_TRAIL) if e.payload.get("stage") == "sla_open"]
+
+
+def test_a_suspension_with_a_healthy_active_sibling_is_not_critical():
+    store = InMemoryEventStore()
+    reg = VersionRegistry(store)
+    reg.register("Executor", "risky")
+    reg.register("Executor", "backup")
+    _seed_dangerous(store, "f", "risky")
+    _seed_runs(store, "fb", "backup", n_pass=5, n_total=5)   # healthy + active alternative
+    result = Auditor(store, reg).enforce(now=_T0)
+    assert "risky" in result.suspended and result.sla_opened == []
+
+
+def test_an_expired_sla_still_suspended_triggers_breakglass():
+    store = InMemoryEventStore()
+    reg = VersionRegistry(store)
+    reg.register("Executor", "solo")
+    _seed_dangerous(store, "f", "solo")
+    Auditor(store, reg).enforce(now=_T0)                       # suspend + open SLA (deadline _T0+24h)
+    result = Auditor(store, reg).enforce(now=_T0 + timedelta(hours=25))   # past the SLA, still suspended
+    assert "solo" in result.breakglass
+    assert [e for e in store.read(AUDIT_TRAIL) if e.payload.get("stage") == "sla_missed"]
+
+
+def test_a_reinstated_version_does_not_miss_its_sla():
+    store = InMemoryEventStore()
+    reg = VersionRegistry(store)
+    reg.register("Executor", "solo")
+    _seed_dangerous(store, "f", "solo")
+    Auditor(store, reg).enforce(now=_T0)
+    reg.set_status("solo", "active")                          # a human reinstates before the deadline
+    result = Auditor(store, reg).enforce(now=_T0 + timedelta(hours=25))
+    assert "solo" not in result.breakglass
+
+
+def test_cell_enforce_runs_the_breaker():
+    from cell.cell import Cell
+    store = InMemoryEventStore()
+    cell = Cell.assemble(store=store)
+    cell.registry.register("Executor", "risky")
+    _seed_dangerous(store, "fq", "risky")
+    cell.enforce(now=_T0)
+    assert cell.registry.status_of("risky") == "suspended"
+
+
+def test_enforce_never_reinstates():
+    store = InMemoryEventStore()
+    reg = VersionRegistry(store)
+    reg.register("Executor", "solo")
+    reg.set_status("solo", "suspended")                      # already suspended (by a prior human act)
+    _seed_runs(store, "f", "solo", n_pass=5, n_total=5)      # healthy now, but suspended
+    Auditor(store, reg).enforce(now=_T0)
+    assert reg.status_of("solo") == "suspended"              # the Auditor never flips it back to active
 
 
 def test_a_passing_version_with_enough_runs_rates_healthy():

@@ -118,6 +118,16 @@ Danger is governed (Constitution Art. 11): only a **safety breach** — a versio
 flow that escalated / was quarantined — rates `dangerous`. A mere quality collapse rates `regressed`
 (alert-only). `python -m cell.observe <db> __audit__` shows the audit trail.
 
+`cell.enforce()` runs the Auditor's **breaker** (M9c): it suspends a `dangerous` version
+(rate-limited — excess dangerous ones are escalated, not auto-suspended), opens a 24-hour SLA when the
+suspension leaves the role with no active alternative, and escalates to break-glass if that SLA
+lapses. It **never reinstates** — un-pausing is a human/Steward act. The suspension flows straight to
+the Optimizer, which then routes around the suspended version.
+
+```python
+result = cell.enforce()        # BreakerResult(suspended, escalated, sla_opened, breakglass)
+```
+
 ## 4. Run the live slice (a real agent → a real PR)
 
 A real CLI coding agent fills the Executor seat and opens an actual pull request. This performs

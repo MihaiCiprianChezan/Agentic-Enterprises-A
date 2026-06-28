@@ -96,7 +96,7 @@ A human who assumes a Role through the Handbrake **acts as that Role**: they inh
 
 ## Article 11 — Version audit and suspension
 
-Added by Board amendment on 28.06.2026 (Art. 8.3), now that role versions are first-class and scored (Build-Spec §2.4) — the governed content the model (§11) requires **before** the Auditor switches on.
+Added by Board amendment on 28.06.2026 (Art. 8.3), now that role versions are first-class and scored (Build-Spec §2.4) — the governed content the model (§11) requires **before** the Auditor switches on. **Now realized in code** (M9c): the Auditor's `enforce` breaker suspends only on danger, within these bounds.
 
 - **11.1 Suspension is reserved for danger.** A version may be suspended only when its field activity shows a **safety breach** — it triggers governance blocks or escalations, or the Steward quarantines it (loop / cost-spiral / runaway). **Ordinary regression — including a catastrophic quality collapse — is alert-only** (rated down for the Optimizer, flagged to the Steward), never suspended: verification gates a low-quality version's outputs, so the harm the breaker exists to prevent does not arise.
 - **11.2 Bounded breaker.** Suspensions are **rate-limited** and **non-cascading** — one suspension may not auto-trigger another. The bounds are governed content (`SUSPENSION_POLICY`, Build-Spec §5).
