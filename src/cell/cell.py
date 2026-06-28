@@ -21,6 +21,7 @@ from cell.planes.memory import EventStore, InMemoryEventStore
 from cell.planes.observability import InMemoryTraceStore, TraceStore, total_cost
 from cell.roles.contracts import Director, Executor, Orchestrator, Verifier
 from cell.roles.reference import RefDirector, RefExecutor, RefOrchestrator, RefVerifier
+from cell.auditor import Auditor
 from cell.steward import Steward, StewardAction
 from cell.versions import VersionRegistry, version_stats
 
@@ -39,6 +40,7 @@ class Cell:
     steward: Steward
     handbrake: CellHandbrake
     registry: Any = None
+    auditor: Any = None
 
     @classmethod
     def assemble(cls, *, director: Optional[Director] = None,
@@ -73,8 +75,9 @@ class Cell:
             verifier=verifier, store=store, ledger=ledger, governance=governance,
             recorder=recorder, cost_model=cost_model, max_revisions=max_revisions, clock=clock,
             optimizer=optimizer, implementers=implementers, registry=registry)
+        auditor = Auditor(store, registry)
         return cls(director, orchestrator, executor, verifier, store, governance,
-                   ledger, recorder, steward, handbrake, registry)
+                   ledger, recorder, steward, handbrake, registry, auditor)
 
     # -- operations (delegate to the control plane / steward) -----------------
 
@@ -120,5 +123,10 @@ class Cell:
         return self.registry.records()
 
     def version_stats(self):
-        """Per-version field scorecard (runs / pass / return / block / mean cost)."""
+        """Per-version field scorecard (runs / pass / return / mean cost)."""
         return version_stats(self.store.all_events())
+
+    def audit(self):
+        """Run the Auditor: rate every version, emit audit records, and return the ratings (M9b).
+        Read + report only — it never suspends or modifies anything (that is 9c)."""
+        return self.auditor.report()

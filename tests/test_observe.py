@@ -79,6 +79,14 @@ def test_timeline_shows_version_registry_events(tmp_path):
     assert "status exec-v2 → suspended" in out
 
 
+def test_timeline_shows_auditor_ratings(tmp_path):
+    store = DurableEventStore(str(tmp_path / "state.db"))
+    store.append("__audit__", "audit", ActorRef("Auditor", "ref"),
+                 {"stage": "rating", "version": "cheap", "verdict": "healthy", "pass_rate": 1.0})
+    out = format_timeline(store.read("__audit__"))
+    assert "rating cheap: healthy" in out
+
+
 def test_tampered_payload_breaks_the_chain_and_is_surfaced(tmp_path):
     import json as _json
     import sqlite3
