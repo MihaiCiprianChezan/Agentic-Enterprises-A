@@ -10,6 +10,10 @@ It is **not** a federation; one cell first, by design. The cell runs operations 
 under a human-authored **constitution** that compiles into runtime-enforced governance, and every
 flow is interruptible through a structural **handbrake**.
 
+> 📖 **New here? Read [Anatomy of a Run](docs/Anatomy-of-a-Run.md)** — one ticket → verified PR,
+> role by role, with the real `observe` output of a live run. It's the fastest way to understand
+> the whole machine.
+
 ## Status
 
 The full one-cell build plan is implemented, reviewed, and merged — and **demonstrated live**: the
@@ -54,6 +58,9 @@ out-of-policy block, and a Steward loop quarantine:
 ```bash
 python -m cell.demo
 ```
+
+**[Demo-Walkthrough.md](docs/Demo-Walkthrough.md)** annotates each scenario's real output against the
+flow — watch the happy path, a human takeover, a crash-and-resume, a policy block, and a quarantine.
 
 ## Use a cell in code
 
