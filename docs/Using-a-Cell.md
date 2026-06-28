@@ -8,6 +8,9 @@ human review/merge process — under a compiled constitution, with a structural 
 flow. You can drive it three ways: the **demo** (no LLM), **in code** (your own roles/ticket), or
 the **live slice** (a real CLI agent opening a real PR). Then you **observe** any run.
 
+> To understand *what happens inside* a run — the inputs and each role's step — read
+> [`Anatomy-of-a-Run.md`](Anatomy-of-a-Run.md) first.
+
 ## 1. Install
 
 Python ≥ 3.11, no third-party runtime dependencies.
