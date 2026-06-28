@@ -37,6 +37,19 @@ NOVEL_LEVEL: Level = "L0"
 # content, like the action-class registry it sits beside.
 CAPABILITY_FLOOR: dict[Level, int] = {"L3": 1, "L2": 1, "L1": 2, "L0": 3}
 
+# Governed version-suspension policy (Constitution Art. 11, model §11) — constitutional content the
+# Auditor (M9) is bound by; present now, read in 9b/9c. Suspension is reserved for *danger* (a safety
+# breach: governance blocks/escalations, or a Steward quarantine for loop/cost-spiral/runaway).
+# Catastrophic quality collapse is ALERT-ONLY (the Verifier gates a bad version's outputs), so the
+# collapse threshold below feeds an alert, not a suspension.
+SUSPENSION_POLICY: dict = {
+    "response_sla_hours": 24,            # suspended-but-critical → human response within this, else escalate
+    "max_suspensions_per_window": 1,     # rate-limit / no-cascade bound
+    "rate_limit_window_hours": 24,
+    "collapse_alert_pass_rate": 0.5,     # severe-regression ALERT threshold (alert-only, NOT suspension)
+    "collapse_alert_min_runs": 5,
+}
+
 
 def level_for(action_class: str) -> Level:
     """R3: unknown class -> L0 (fail-safe) and (caller should) emit a classification proposal."""

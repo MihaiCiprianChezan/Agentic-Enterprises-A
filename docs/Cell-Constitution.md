@@ -34,7 +34,7 @@ The cell binds to role **contracts**, not to whoever implements them. Each role 
 - **3.1 Operating roles.** Direction (turns intake into a specified goal with acceptance criteria), Orchestration (sequences the work and sets breakpoints), Execution (produces the work product), Verification (independently scores the output before it takes effect).
 - **3.2 System role.** Steward. Has full **technical** capability over the operating roles — pause/quarantine, roll back to a known-good checkpoint, restart, retune, and swap a misbehaving live instance for a known-good version — and **no** business-decision authority. It maintains live instances; it does **not** permanently replace the implementer behind a Role. Permanent removal or replacement is a Board decision (Art. 8).
 - **3.3 Mode.** Every role runs as an agent by default and may be assumed by a human at any time through the Handbrake (impersonation on demand).
-- **3.4 Deferred roles.** A role is instantiated only once its precondition exists (capability/cost spread; multiple running versions). The **Optimizer is now instantiated** (M8): its precondition — attributed cost and capability/cost spread across implementers — holds. It is bound by the risk→capability floor declared as constitutional content (`CAPABILITY_FLOOR`, Art. 4 / governance registry): it may minimize cost only *beneath* a floor it does not set, and may never route a task below it. The **version registry is now built** (Build-Spec §2.4): role versions are first-class, event-sourced, and carry a status (`active`/`rolled_back`/`suspended`); the Optimizer never routes to a non-active version, so **`suspended` is the Auditor's lever** when M9 arrives. The **Auditor itself remains deferred**; its seam is open but unused (it neither rates nor suspends yet). **Forward note:** when the Auditor is switched on, this constitution must first be amended to add the governed content the model requires for it — the suspension threshold (reserved for *danger*, not ordinary regression) and a defined human-response SLA for any suspended-but-critical version (model §11). Until then the Auditor's only contemplated future role is surfacing proposed amendments (Art. 8.4).
+- **3.4 Deferred roles.** A role is instantiated only once its precondition exists (capability/cost spread; multiple running versions). The **Optimizer is now instantiated** (M8): its precondition — attributed cost and capability/cost spread across implementers — holds. It is bound by the risk→capability floor declared as constitutional content (`CAPABILITY_FLOOR`, Art. 4 / governance registry): it may minimize cost only *beneath* a floor it does not set, and may never route a task below it. The **version registry is now built** (Build-Spec §2.4): role versions are first-class, event-sourced, and carry a status (`active`/`rolled_back`/`suspended`); the Optimizer never routes to a non-active version, so **`suspended` is the Auditor's lever** when M9 arrives. The **Auditor itself remains deferred** in code (it neither rates nor suspends yet), but **its constitutional precondition is now met**: the amendment the model §11 requires is enacted as **Article 11** (ratified 28.06.2026) — the danger-only suspension threshold, the rate-limited/non-cascading breaker, and the 24-hour human-response SLA. The Auditor may now be instantiated (M9 — rating, regression alerts, and the suspend-and-escalate breaker), bound by Article 11; until built, its only active contribution remains surfacing proposed amendments (Art. 8.4).
 
 ## Article 4 — Authority ceilings (L0–L3)
 
@@ -94,6 +94,16 @@ A human who assumes a Role through the Handbrake **acts as that Role**: they inh
 - **10.2 Separation of record.** When one human plays both Board and a Role, Board-acts and Role-acts are logged to **separate** audit trails, so the two capacities stay distinguishable after the fact.
 - **10.3** The state/event history is append-only and tamper-evident; a corrupted history must be detectable.
 
+## Article 11 — Version audit and suspension
+
+Added by Board amendment on 28.06.2026 (Art. 8.3), now that role versions are first-class and scored (Build-Spec §2.4) — the governed content the model (§11) requires **before** the Auditor switches on.
+
+- **11.1 Suspension is reserved for danger.** A version may be suspended only when its field activity shows a **safety breach** — it triggers governance blocks or escalations, or the Steward quarantines it (loop / cost-spiral / runaway). **Ordinary regression — including a catastrophic quality collapse — is alert-only** (rated down for the Optimizer, flagged to the Steward), never suspended: verification gates a low-quality version's outputs, so the harm the breaker exists to prevent does not arise.
+- **11.2 Bounded breaker.** Suspensions are **rate-limited** and **non-cascading** — one suspension may not auto-trigger another. The bounds are governed content (`SUSPENSION_POLICY`, Build-Spec §5).
+- **11.3 The Auditor cannot reinstate.** Pause is unilateral (safety); un-pause is not — only the Steward or a human resolves it. A suspended-but-critical version carries a **24-hour human-response SLA**; a missed SLA is a governed event that escalates up the Office ladder and, if still unanswered, onto the break-glass path.
+
+> **Forward note (proposed, not enacted).** A future amendment may extend the danger threshold to also suspend on catastrophic quality collapse (pass rate below `collapse_alert_pass_rate` over `collapse_alert_min_runs`). Deferred — the model reserves suspension for harm, and a collapsed version's bad output is already gated by verification; revisit if gated waste proves costly.
+
 ---
 
 ### Ratification record (M1)
@@ -110,3 +120,11 @@ cell-specific values:
 With these filled, the constitution is concrete enough to compile a tiny rule set against
 (M5) and to build M2–M4 of the build plan. Every later enforced rule must trace to a clause
 here (build-plan M1 acceptance). Subsequent changes are Board amendments (Article 8.3), not edits.
+
+### Amendment record
+
+- **Article 11 — Version audit and suspension** — added by Board amendment on 28.06.2026, ratified
+  by the Board (Mihai-Ciprian Chezan, sole approval per 8.2) and recorded on the Board-acts trail
+  (`AutonomyBoard.ratify_amendment`, Art. 8.3). Enacts the model §11 governed content — the
+  danger-only suspension threshold, the rate-limited/non-cascading breaker, and the 24-hour
+  human-response SLA — as the precondition for instantiating the Auditor (M9).

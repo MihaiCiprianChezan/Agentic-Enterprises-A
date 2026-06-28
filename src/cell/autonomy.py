@@ -106,6 +106,22 @@ class AutonomyBoard:
         })
         return amended
 
+    def ratify_amendment(self, article: str, content: dict, ratifier: ActorRef) -> dict:
+        """Ratify a constitutional-*content* amendment (e.g. the version-suspension policy, Art. 11) —
+        distinct from the ceiling-raise `ratify`: this content is read by the Auditor, not the
+        governance gate, so there is no registry to re-compile. Authorized by the Board (Art. 8.2),
+        logged on the Board-acts trail (Art. 8.3); a non-Board ratifier is refused and the refusal
+        recorded (invariant #10)."""
+        if not self._is_board(ratifier):
+            self._store.append(BOARD_TRAIL, "governance", ratifier, {
+                "stage": "amendment", "decision": "block", "clause": "Art. 8.2",
+                "article": article, "reason": "only the Board may ratify an amendment (Art. 8.2)"})
+            raise AmendmentRefused("only the Board may ratify a constitutional amendment (Art. 8.2)")
+        self._store.append(BOARD_TRAIL, "governance", ratifier, {
+            "stage": "amendment", "decision": "ratified", "clause": "Art. 8.3",
+            "article": article, "content": content})
+        return content
+
     def _is_board(self, actor: ActorRef) -> bool:
         return getattr(actor, "mode", "agent") == "human" and actor.version in self._members
 
