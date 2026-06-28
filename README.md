@@ -27,6 +27,7 @@ cell has driven a real CLI coding agent to take a ticket to a real pull request.
 | **M7** | the Steward — drift/loop/cost quarantine + rollback |
 | **M8** | the Optimizer — route each work item to the cheapest implementer that clears its constitutional capability floor, by attributed cost (auditable, recovered on resume) |
 | **Versions** | first-class role versions — an event-sourced registry with status (active/rolled_back/suspended) + a per-version scorecard; the Optimizer never routes to a suspended version (the M9 Auditor precondition) |
+| **M9a/9b** | the Auditor's constitution (Article 11 — suspension reserved for danger, 24h SLA) and its **rate + report** core: rate each version into a per-role fitness leaderboard, flag regressions/danger as audit records (the breaker, 9c, is the only piece left) |
 | **Composition** | one assembled `Cell` that demonstrates the §7 definition of done on stubs |
 | **Real runtime** | a real CLI coding agent (Claude Code by default) bound into the Executor seat |
 
@@ -148,7 +149,7 @@ The docs are authoritative — if code and a doc disagree, the doc wins (or the 
 
 Per the build plan and invariant #8 (add a tier only when its precondition exists):
 
-- **Auditor + real version registry** — only when multiple versions run.
+- **The Auditor's suspend-and-escalate breaker (M9c)** — the version registry, the Article 11 policy, and the Auditor's rate+report are built; only the governed suspension *action* (on a `dangerous` rating, with the SLA) remains.
 - **A second cell · federation · the supra-constitution** — only once one cell is proven. The model
   defines the supra-constitution's *slot and precedence rule* (a cell enrolls by its own Board
   amendment); the federation layer itself is future work, meaningful only when there is more than

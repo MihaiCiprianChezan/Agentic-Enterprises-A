@@ -10,7 +10,7 @@ Companion to: Agentic-First-Enterprises.md · One-Cell-Build-Plan.md · Cell-Con
 
 This document instantiates milestone **M2** of the build plan: the explicit interface for each role the cell binds to. The system depends on these contracts, never on whether an agent or a human implements them (invariant #1). Each contract uses the model's standard shape (§2): responsibility, inputs, outputs, authority scope, acceptance criteria, escalation rule, observability hooks.
 
-These are written **generically**, matching the constitution. The `«placeholders»` are the only workflow-specific parts. Six contracts: four operating roles (Director, Orchestrator, Executor, Verifier) and two system roles (Steward, and the Optimizer — instantiated at M8 now its precondition holds). The Auditor remains deferred in code (Constitution Art. 3.4) and is not contracted here yet — but its governed bounds are now ratified (Constitution Article 11 + `SUSPENSION_POLICY`): suspension reserved for danger, rate-limited/non-cascading, with a 24-hour human-response SLA. Contracting it (M9) is unblocked.
+These are written **generically**, matching the constitution. The `«placeholders»` are the only workflow-specific parts. Seven contracts: four operating roles (Director, Orchestrator, Executor, Verifier) and three system roles (Steward; the Optimizer — instantiated at M8; and the Auditor — instantiated at M9b for **rate + report**, bound by Constitution Article 11). The Auditor's **suspend-and-escalate breaker** (M9c) is the only remaining piece — it acts on the Auditor's `dangerous` ratings.
 
 All five share these **invariants** (do not repeat them per role):
 
@@ -103,6 +103,19 @@ Instantiated at **M8** now its precondition holds (cost is attributed and there 
 | **Escalation rule** | No candidate clears the floor (`NoCapableImplementer`) → escalate to a human; the Optimizer never relaxes the floor to proceed. |
 | **Placement (YAGNI)** | Inserted only where the cost/capability spread pays for the routing — engaged with ≥2 candidates; a uniform pipeline gets no router (model §10). |
 | **Version status** | Routes only to `active` versions (the version registry, Build-Spec §2.4); a `rolled_back`/`suspended` version is never chosen — so the Auditor's suspension (M9) takes effect through the Optimizer. |
+
+## Contract 7 — Auditor *(system role — no business authority)*
+
+Instantiated at **M9b** (rate + report). Its object is the **version, as a population over time** — distinct from the Verifier (one output) and the Steward (one live instance). Bound by Constitution Article 11.
+
+| Field | Specification |
+|---|---|
+| **Responsibility** | Owns *is this version getting better, worse, or dangerous*. Rates every version from accumulated field activity (`version_stats`) — quality, cost, regression-vs-predecessor — into a per-role **fitness leaderboard**; flags regressions and danger. **Audits, rates, reports** — does not operate, steward, or direct. |
+| **Inputs** | The Observability plane: the per-version scorecard, the version registry, and safety signals (escalation / Steward quarantine / governance block). The governed `SUSPENSION_POLICY` (Art. 11). |
+| **Outputs** | Durable **audit records** on the `__audit__` trail: a rating per version, a **regression alert** (for the Steward/Optimizer), and a **danger flag** (for humans / the 9c breaker). Signals, not actions. |
+| **Authority scope** | **Zero authority over the world in 9b.** May **not** suspend, reinstate, modify/retune a version (that is the Steward), dismiss/retire one (Board), or make any business decision. **Danger is governed**, not improvised: only a **safety breach** (Art. 11) — never a mere quality regression — is rated `dangerous`. Suspension itself is the 9c breaker; reinstatement is never an agent's. |
+| **Acceptance criteria** | Each version is rated faithfully to Art. 11 (danger = safety breach; collapse = `regressed`/alert-only); the leaderboard ranks by fitness; every rating/alert is on the audit trail; the Auditor changes no version status or work product. |
+| **Escalation rule** | A `dangerous` rating is reported (danger flag) for the breaker/human; the Auditor itself takes no action on it in 9b. |
 
 ---
 

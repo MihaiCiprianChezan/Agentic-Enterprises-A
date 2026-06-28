@@ -101,7 +101,22 @@ cell.registry.set_status("light", "suspended")   # the Optimizer now skips "ligh
 cell.version_stats()                              # per-version runs / pass / return / mean cost
 ```
 
-This version registry + scorecard is the substrate the Auditor (M9) will rate and act on.
+This version registry + scorecard is the substrate the Auditor rates.
+
+### Auditing versions (the Auditor, M9b)
+
+`cell.audit()` runs the Auditor: it rates each version from field activity
+(`unproven`/`healthy`/`regressed`/`dangerous`), emits durable audit records, and returns the ratings.
+It is **read + report only** — it never suspends or changes anything (that's the 9c breaker).
+
+```python
+ratings = cell.audit()                       # {version: VersionRating(...)}
+cell.auditor.leaderboard("Executor")         # the per-role fitness leaderboard
+```
+
+Danger is governed (Constitution Art. 11): only a **safety breach** — a version that executed in a
+flow that escalated / was quarantined — rates `dangerous`. A mere quality collapse rates `regressed`
+(alert-only). `python -m cell.observe <db> __audit__` shows the audit trail.
 
 ## 4. Run the live slice (a real agent → a real PR)
 

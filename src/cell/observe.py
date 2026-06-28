@@ -142,6 +142,15 @@ def key_fact(ev: Event) -> str:
         if stage == "route":
             return f"route → {p.get('chosen', '?')} (floor {p.get('floor')})"
         return stage or "decision"
+    if k == "audit":
+        st = p.get("stage")
+        if st == "rating":
+            return f"rating {p.get('version', '?')}: {p.get('verdict', '?')} (pass {p.get('pass_rate')})"
+        if st == "regression":
+            return f"regression alert · {p.get('version', '?')}"
+        if st == "danger":
+            return f"DANGER · {p.get('version', '?')}"
+        return st or "audit"
     if k == "governance":
         lvl = p.get("authority_level", p.get("level"))  # handbrake gate vs RuleSetGovernance
         lvl_s = f"{lvl}" if str(lvl).upper().startswith("L") else f"L{lvl}"  # "L2" or int 2 → "L2"

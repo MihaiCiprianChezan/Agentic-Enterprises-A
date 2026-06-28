@@ -72,6 +72,7 @@ src/cell/
   steward.py            # Steward — drift/loop/cost quarantine + rollback (M7)
   optimize.py           # Optimizer — capability/cost-aware implementer routing (M8)
   versions.py           # version registry (event-sourced) + per-version scorecard — the M9 precondition
+  auditor.py            # Auditor — rate versions + emit audit records (M9b; 9c breaker pending)
   observe.py            # read-only run inspector over the durable event plane (python -m cell.observe)
   planes/
     memory.py           # event/memory plane — EventStore + Event/Checkpoint/Decision (M0)

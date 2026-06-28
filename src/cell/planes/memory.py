@@ -23,7 +23,7 @@ from cell.domain.objects import ActorRef
 
 EventKind = Literal[
     "decision", "action", "state", "breakpoint",
-    "injection", "verdict", "escalation", "governance", "version",
+    "injection", "verdict", "escalation", "governance", "version", "audit",
 ]
 
 

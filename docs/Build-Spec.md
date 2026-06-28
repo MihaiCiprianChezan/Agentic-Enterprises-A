@@ -167,8 +167,11 @@ so it is durable, hash-chained, and auditable like any plane state. Multiple ver
 run; each is registered with a status. The **Optimizer respects status** — it never routes to a
 non-`active` (rolled_back / suspended) version (`suspended` is the Auditor's lever, M9). Per-version
 field outcome + cost is scored by `version_stats` (runs / pass / return / mean cost) — the
-raw signal the Auditor (M9) will rate. The Auditor itself (ratings, suspension *policy*, the
-human-response SLA) is still deferred (Constitution Art. 3.4).
+raw signal the **Auditor** rates. The Auditor (M9b, `cell/auditor.py`) rates each version
+(`unproven`/`healthy`/`regressed`/`dangerous`) into a per-role fitness leaderboard and writes audit
+records (rating / regression / danger) on a reserved **`__audit__`** trail (a `version`/`audit`-kind
+event flow). Danger is governed by Article 11 (a safety breach only). The suspend-and-escalate
+breaker that acts on a `dangerous` rating is M9c (still deferred).
 
 ---
 
