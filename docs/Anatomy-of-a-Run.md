@@ -4,6 +4,8 @@ How one **ticket** becomes a **verified pull request** — the inputs, the flow,
 does, step by step. This is the operational companion to [`Role-Contracts.md`](Role-Contracts.md)
 (the contracts) and [`Using-a-Cell.md`](Using-a-Cell.md) (how to drive it). Everything below is
 real: every step is a durable, hash-chained event you can read back with `python -m cell.observe`.
+To *watch* these paths run — including a pause, a crash, a block, and a quarantine — see
+[`Demo-Walkthrough.md`](Demo-Walkthrough.md).
 
 ---
 

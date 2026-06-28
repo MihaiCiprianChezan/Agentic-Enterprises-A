@@ -31,6 +31,7 @@ python -m cell.demo
 
 You'll see a routine autonomous run, a handbrake takeover, a kill-and-resume that stays
 exactly-once, an out-of-policy block, and a Steward loop quarantine.
+[`Demo-Walkthrough.md`](Demo-Walkthrough.md) annotates each scenario's real output against the flow.
 
 ## 3. Drive a cell in code
 
