@@ -126,6 +126,28 @@ def test_cell_enforce_runs_the_breaker():
     assert cell.registry.status_of("risky") == "suspended"
 
 
+def test_a_suspension_sticks_for_a_version_seen_only_in_field_activity():
+    # A dangerous version that ran but was never registered must still get a persistent suspension
+    # (else the breaker re-suspends it every pass).
+    store = InMemoryEventStore()
+    reg = VersionRegistry(store)
+    _seed_dangerous(store, "fq", "ghost")   # NOT registered
+    Auditor(store, reg).enforce(now=_T0)
+    assert reg.status_of("ghost") == "suspended"
+
+
+def test_reinstatement_closes_the_sla_so_a_later_resuspension_does_not_miss_it():
+    store = InMemoryEventStore()
+    reg = VersionRegistry(store)
+    reg.register("Executor", "solo")
+    _seed_dangerous(store, "f", "solo")
+    Auditor(store, reg).enforce(now=_T0)        # suspend + open SLA
+    reg.set_status("solo", "active")            # a human reinstates → resolves the SLA
+    reg.set_status("solo", "suspended")         # later re-suspended by some other means
+    result = Auditor(store, reg).enforce(now=_T0 + timedelta(hours=25))
+    assert "solo" not in result.breakglass      # the old SLA was closed by reinstatement, not stale
+
+
 def test_enforce_never_reinstates():
     store = InMemoryEventStore()
     reg = VersionRegistry(store)

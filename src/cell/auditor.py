@@ -16,7 +16,7 @@ from typing import Optional
 
 from cell.domain.objects import ActorRef
 from cell.planes.governance import SUSPENSION_POLICY
-from cell.versions import version_stats
+from cell.versions import VERSIONS_FLOW, version_stats
 
 AUDIT_TRAIL = "__audit__"
 AUDITOR_ACTOR = ActorRef("Auditor", "ref")
@@ -135,7 +135,7 @@ class Auditor:
 
         # 1. Miss sweep first: an open SLA past its deadline whose version is still suspended (not
         # reinstated) escalates to break-glass — the safety valve so a stuck suspension surfaces.
-        for version, deadline in self._open_slas(audit).items():
+        for version, deadline in self._open_slas().items():
             if deadline < now and self.registry.status_of(version) == "suspended":
                 self._log("sla_missed", version, now)
                 result.breakglass.append(version)
@@ -144,7 +144,12 @@ class Auditor:
         dangerous = [v for v, r in ratings.items()
                      if r.verdict == "dangerous" and self.registry.status_of(v) == "active"]
         headroom = max(0, max_per - self._recent_suspensions(audit, now, window_h))
+        registered = {v for (_r, v) in self.registry.records()}
         for version in dangerous[:headroom]:
+            if version not in registered:
+                # a version seen only in field activity must be registered first, or set_status has
+                # no record to update and the suspension would not stick (it would re-suspend forever).
+                self.registry.register(ratings[version].role, version)
             self.registry.set_status(version, "suspended")   # the Optimizer now skips it
             self._log("suspend", version, now, reason=list(ratings[version].reasons))
             result.suspended.append(version)
@@ -161,15 +166,21 @@ class Auditor:
         self.store.append(AUDIT_TRAIL, "audit", AUDITOR_ACTOR,
                           {"stage": stage, "version": version, "ts": now.isoformat(), **extra})
 
-    def _open_slas(self, audit) -> dict:
-        """version -> SLA deadline, for SLAs opened and not yet recorded as missed (folded in order)."""
+    def _open_slas(self) -> dict:
+        """version -> SLA deadline, for SLAs still open. An SLA closes on a recorded miss OR on
+        reinstatement (a registry status→active for the version) — a human responding resolves it, so
+        a later re-suspension can't trigger the stale old SLA. Folded in append order across trails."""
+        sla_events = self.store.read(AUDIT_TRAIL)
+        reinstatements = [e for e in self.store.read(VERSIONS_FLOW)
+                          if e.payload.get("stage") == "status" and e.payload.get("status") == "active"]
         out: dict = {}
-        for e in audit:
+        for e in sorted(sla_events + reinstatements, key=lambda ev: (ev.at, ev.seq)):
             p = e.payload
             if p.get("stage") == "sla_open":
                 out[p["version"]] = datetime.fromisoformat(p["deadline"])
-            elif p.get("stage") == "sla_missed":
-                out.pop(p["version"], None)
+            elif p.get("stage") == "sla_missed" or (p.get("stage") == "status"
+                                                    and p.get("status") == "active"):
+                out.pop(p["version"], None)   # missed, or reinstated (resolved) → closed
         return out
 
     @staticmethod
