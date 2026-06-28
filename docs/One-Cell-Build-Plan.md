@@ -9,7 +9,7 @@ Scope: One cell · Software-delivery workflow · Tool-agnostic
 
 **A concrete MVP build plan for a single sovereign cell, scoped around a software-delivery workflow, specified by required capabilities and guarantees rather than named tools.**
 
-This is the companion build document to `Agentic-First-Enterprises.md` (referred to below as "the model"). It takes the model's own adoption sequence (§15) and YAGNI discipline (invariant #8) and turns them into a buildable plan for exactly one cell — not a federation. Federation, the supra-constitution, the Auditor, and the Optimizer are deliberately **out of scope** here and are only stubbed where a later seam is cheap to leave open.
+This is the companion build document to `Agentic-First-Enterprises.md` (referred to below as "the model"). It takes the model's own adoption sequence (§15) and YAGNI discipline (invariant #8) and turns them into a buildable plan for exactly one cell — not a federation. Federation and the supra-constitution are deliberately **out of scope** here. The Optimizer (M8) and Auditor (M9) — originally deferred and only seamed — have **since been built**, now that their preconditions (capability/cost spread; multiple scored versions) exist.
 
 The plan is **tool-agnostic by design**, matching the model's technology-neutral stance: every layer is specified as a set of *required capabilities and guarantees*. Any engine that satisfies the guarantee qualifies. Where a guarantee is the hard part, that is called out explicitly.
 
@@ -59,7 +59,7 @@ The model's full role set (§4) is collapsed to the minimum that still makes the
 | Auditor | **Built (M9 complete)** | M9 | `cell/auditor.py`: **9a** amendment (Article 11 + `SUSPENSION_POLICY`), **9b** rate + report (fitness leaderboard, regression/danger records), **9c** the suspend-and-escalate breaker (`enforce`: suspend a `dangerous` version, rate-limited/non-cascading, 24h SLA → break-glass; never reinstates). Faithful to Art. 11 (danger = safety breach only). **M0–M9 complete.** |
 | Board | Yes — pattern | Writes/owns the constitution; the human accountability anchor. | Can be one person (the model's "Board of one", §3). Wears the hat part-time. |
 
-The deferred roles are not designed out — the version registry stub (§4 below) leaves the Auditor's seam open, and the Optimizer slots between existing steps when needed.
+The later roles were never designed out — the version-registry seam (§4 below) kept the Auditor's hook open, and the Optimizer slotted between existing steps. Both are now built (M8/M9); the registry is a real, event-sourced layer (`cell/versions.py`), no longer a stub.
 
 ---
 
@@ -74,7 +74,7 @@ Required capabilities:
 - **Durable, external state for every flow.** Goal state, step-by-step progress, and produced artifacts persist outside any agent process and survive its restart.
 - **Append-only event history** capturing not just *what changed* but *what was decided and why* — the decision trail (model §5). A human taking over must inherit the reasoning, not just the latest state.
 - **Checkpoint at every meaningful step**, addressable for resume and for replay.
-- **A version registry stub**: every agent version/variant is identifiable and activity is attributable to it. In the MVP this can be a single recorded version string per role — but the field exists from day one so the Auditor has something to read later.
+- **A version registry**: every agent version/variant is identifiable and activity is attributable to it. The MVP shipped a single recorded version string per role (the field existed from day one); it is **now a real event-sourced registry** (`cell/versions.py`, M9 enabler) the Auditor reads.
 - **Tamper-evidence.** The history must be detectable-if-corrupted (model §14 trust boundary). At minimum, content-addressed or hash-chained events.
 
 Guarantee that is the hard part: *correctness and integrity of this store is the cell's single largest point of failure.* Make it redundant and verifiable before scaling any autonomy on top of it.
@@ -176,7 +176,7 @@ Start every class at the §4 levels. Raise exactly one class (e.g. "write to the
 **M7 — Add the Steward (minimal).**
 Drift/loop/cost-runaway alerting + the ability to roll a flow back to a known-good checkpoint. Acceptance: an induced loop is detected and the flow is quarantined before it burns the budget cap.
 
-**Built past the core MVP:** the Optimizer (M8); and the **versions enabler** — a real, event-sourced version registry (Build-Spec §2.4) with status + per-version scoring, the M9 precondition. **Still deferred (and that is correct):** the Auditor itself (M9 — ratings + suspend-and-escalate, after the Art 3.4 constitutional amendment), any second cell / federation / supra-constitution (only when one cell is proven).
+**Built past the core MVP:** the Optimizer (M8); the **versions enabler** — a real, event-sourced version registry (Build-Spec §2.4) with status + per-version scoring; and the **Auditor (M9 — complete)**: the Article 11 amendment, rate + report, and the suspend-and-escalate breaker. **Still deferred (and that is correct):** any second cell / federation / supra-constitution (only when one cell is proven).
 
 ---
 

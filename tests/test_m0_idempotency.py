@@ -1,10 +1,8 @@
 """M0 acceptance tests — the two seams.
 
 These encode the M0 "definition of done" from One-Cell-Build-Plan.md §7 item 3 and
-Build-Spec.md §7. The structural tests (event chain, tamper-evidence, key determinism)
-pass now. The two exactly-once tests are `skip`-marked until effects.wrapper.perform()
-is implemented (the M0 task, owned in the real repo via Claude Code): remove the skip
-when you implement it and they become the real M0 acceptance gate.
+Build-Spec.md §7. `effects.wrapper.perform()` is implemented, so all tests pass —
+including the two exactly-once gates (the kill-and-resume acceptance). M0 is complete.
 
 Run:  pytest -q
 """

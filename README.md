@@ -132,7 +132,7 @@ hiding it. `--full` dumps complete event payloads. See **[docs/Using-a-Cell.md](
 The docs are authoritative — if code and a doc disagree, the doc wins (or the doc is amended first).
 
 1. [`Agentic-First-Enterprises.md`](docs/Agentic-First-Enterprises.md) — the model; the 11 design invariants are non-negotiable.
-2. [`One-Cell-Build-Plan.md`](docs/One-Cell-Build-Plan.md) — the MVP plan and milestone order (M0–M7).
+2. [`One-Cell-Build-Plan.md`](docs/One-Cell-Build-Plan.md) — the build plan and milestone order (M0–M9; §6 lists the core M0–M7 sequence, with M8–M9 built past the MVP).
 3. [`Cell-Constitution.md`](docs/Cell-Constitution.md) — the constitution this cell runs under (Articles 1–10).
 4. [`Role-Contracts.md`](docs/Role-Contracts.md) — the five role interfaces.
 5. [`Handbrake-Interface.md`](docs/Handbrake-Interface.md) — the control plane.
@@ -154,7 +154,7 @@ Per the build plan and invariant #8 (add a tier only when its precondition exist
   amendment); the federation layer itself is future work, meaningful only when there is more than
   one cell to coordinate.
 
-## Status
+## About
 
-A reference implementation, built milestone by milestone and meant to be argued with and corrected
-where it meets reality.
+A reference implementation, built milestone by milestone (M0–M9 complete) and meant to be argued
+with and corrected where it meets reality.

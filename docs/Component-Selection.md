@@ -68,5 +68,7 @@ The scaffold is **Python** — the default for agentic systems, with first-class
 
 - **A message broker / Kafka** — one cell's flows fit in a DB and a durable-execution engine. Add a broker only at federation scale.
 - **A separate vector/RAG store** — not part of the model's core; add only if a role's task needs retrieval.
-- **The Optimizer** (M8) — now built as a minimal cost-aware router (`cell/optimize.py`): pick the cheapest implementer clearing the task's capability floor, by attributed cost. **Auditor infra** (version leaderboards, ratings) — still deferred until you run multiple versions (Constitution Art. 3.4).
+- **The Optimizer** (M8) — built as a minimal cost-aware router (`cell/optimize.py`): pick the cheapest implementer clearing the task's capability floor, by attributed cost.
+- **The Auditor** (M9) — built (`cell/auditor.py`): the version registry + per-version scorecard, fitness ratings/leaderboard, and the suspend-and-escalate breaker. Version leaderboards are meaningful once multiple versions run; a single-version pipeline carries no overhead.
+- **Federation infra** (a second cell, the supra-constitution, Director-to-Director treaties) — still deferred until a second cell exists (Constitution Art. 3.4).
 - **Kubernetes / heavy orchestration** — a single process (or a managed engine) runs one cell. Scale the deployment when one cell is proven, not before (invariant #8).
