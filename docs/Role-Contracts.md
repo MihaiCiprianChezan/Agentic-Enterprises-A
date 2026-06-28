@@ -135,8 +135,11 @@ HANDBRAKE ── any human may assume any Role at any breakpoint, bound by the s
 
 Every arrow is an asynchronous, durable handoff through the memory/event plane (build plan §3.1), not a blocking call — so a waiting human holds up only the work that genuinely depends on their output (model §7).
 
-## What is intentionally absent
+## Now present (built since the original MVP wiring)
 
-- **No Optimizer arrow.** Uniform low-stakes pipeline; no capability spread to route (Constitution Art. 3.4). When variance appears, the Optimizer slots between Orchestrator→Executor.
-- **No Auditor.** One version per role in the MVP; nothing to compare. The version-registry field exists in the trace so the Auditor can be added without rewiring.
-- **No Director-to-Director port.** One cell; federation is out of scope.
+- **The Optimizer arrow** is wired — once capability/cost spread appeared (multiple implementers + attributed cost), the Optimizer slotted in at work-item assignment (Orchestrator→Executor), routing to the cheapest capable active version (M8).
+- **The Auditor** is wired — now that multiple versions can run and are scored, it rates versions, reports regressions/danger, and holds the suspend-and-escalate breaker (M9), reading the version registry the trace always carried.
+
+## Still intentionally absent
+
+- **No Director-to-Director port.** One cell; federation / the supra-constitution is out of scope until a second cell exists (Constitution Art. 2.4 / 3.4).

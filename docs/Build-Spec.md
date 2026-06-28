@@ -101,7 +101,7 @@ Verdict {
 CriterionScore { criterion_id: string, result: "met"|"unmet"|"unclear", note: string? }
 ```
 
-`ActorRef { role: string, version: string, mode: "agent"|"human", office?: string }` — identifies who/what acted, with the version-registry stub baked in (`version`) so the Auditor can attribute activity later without rewiring.
+`ActorRef { role: string, version: string, mode: "agent"|"human", office?: string }` — identifies who/what acted; the `version` field is what the version registry (§2.4) and the Auditor (§11 / M9) use to attribute activity per version.
 
 ---
 
@@ -280,7 +280,7 @@ the governed bounds the Auditor is bound by (Constitution Art. 11): `response_sl
 suspended-but-critical version, the rate-limit (`max_suspensions_per_window`, `rate_limit_window_hours`)
 that makes the breaker non-cascading, and the `collapse_alert_pass_rate`/`collapse_alert_min_runs`
 **alert** threshold (a quality collapse is alert-only, never a suspension — suspension is reserved for
-a safety breach). Present now; read by the Auditor when M9 is built.
+a safety breach). **The Auditor (M9) reads and enforces these bounds** (`Auditor.enforce`).
 
 ### 5.2 The rules
 Each rule = a check, an effect on violation, and its source clause.

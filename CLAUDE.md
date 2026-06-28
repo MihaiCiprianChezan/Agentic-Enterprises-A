@@ -32,28 +32,26 @@ The full design lives in `docs/` and is the source of truth. Code must conform t
 - **#9** A human who takes over a Role is bound by that Role's authority, not their human Office.
 - **#10** Governance is compiled from the constitution; agents never author their own rules.
 
-## Current target: M0 — the two seams
+## Build status: M0–M9 complete
 
-M0 proves the mechanic everything else rests on. Two deliverables:
+The whole one-cell build plan is **implemented, reviewed, and merged** (the full suite is green).
+All milestones are done:
 
-1. **Durable event store** — make `cell/planes/memory.py`'s `EventStore` persistent
-   (SQLite or Postgres, one append-only hash-chained `events` table + a `checkpoints` table).
-   The `InMemoryEventStore` is the reference; a durable class implements the same Protocol.
-2. **Idempotent-action wrapper** — implement `cell/effects/wrapper.py::perform()` per
-   Build-Spec §4.2 against a **durable** effects ledger, so killing the process mid-effect
-   and re-running cannot double-fire.
+- **M0** durable hash-chained event store + idempotent-action wrapper (exactly-once / at-most-once
+  across a kill-and-resume — the acceptance tests in `tests/test_m0_idempotency.py` pass).
+- **M1** ratified constitution · **M2** role contracts · **M3** observability (trace + cost) ·
+  **M4** the handbrake · **M5** governance compiled R1–R12 · **M6** autonomy graduation ·
+  **M7** the Steward · **M8** the Optimizer (capability/cost routing) · **M9** the Auditor
+  (Article 11 amendment + rate/report + the suspend-and-escalate breaker).
+- Plus: the composition harness (`Cell.assemble`), the real CLI-agent runtime (`claude -p` in the
+  Executor seat), the observability inspector (`python -m cell.observe`), cost-into-events (measured
+  wall-clock + reported tokens), `start()` re-entry, and the version layer (`cell/versions.py`).
 
-**Definition of done (Build-Spec §7, build-plan §7 item 3):** kill the process after an
-effect is recorded in-flight but before completion; on restart, the flow resumes and the
-effect ends up applied exactly once (reversible) or at-most-once (irreversible) — never twice.
+**Only optional federation / the supra-constitution remains** — and its precondition is a *second
+cell*. Per invariant #8, it is not built until one exists.
 
-The acceptance tests are in `tests/test_m0_idempotency.py`. The structural tests
-(event chain, tamper-evidence, key determinism) pass now; the two exactly-once tests are
-`skip`-marked — implement `perform()`, remove the skips, and they become the real M0 gate.
-
-**Start here:** `docs/M0-Implementation-Notes.md` is the step-ordered playbook for this
-milestone (durable store → wrapper → kill-and-resume gate), with the commit-ordering and
-idempotency-key pitfalls called out.
+> Picking up work? Read `README.md` for the current onramp and `docs/Using-a-Cell.md` for usage.
+> `docs/M0-Implementation-Notes.md` is retained as the historical M0 playbook.
 
 ## Project layout
 
@@ -80,7 +78,7 @@ src/cell/
     governance.py       # action-class registry + RuleSetGovernance R1–R12 (M5)
     control.py          # the Handbrake Protocol — interface for M4 (impl in handbrake.py)
   effects/wrapper.py    # the idempotency wrapper — M0 CORE
-tests/                  # one suite per milestone (M0–M7)
+tests/                  # one or more suites per milestone (M0–M9) + cross-cutting suites
 ```
 
 ## Conventions
@@ -92,8 +90,9 @@ tests/                  # one suite per milestone (M0–M7)
   composition root (`cell/cell.py`) is the single seam where a real role-runtime binds.
 - **Trace every claim to a clause.** Governance rules and gates cite a constitution Article;
   keep that traceability when you implement them (Build-Spec §5.4 validation/attestation).
-- **YAGNI / invariant #8.** Do not build the Optimizer, the Auditor, a message broker, or a
-  second cell. They are deferred until their precondition exists (Constitution Art. 3.4).
+- **YAGNI / invariant #8.** The Optimizer (M8) and Auditor (M9) are built now that their
+  preconditions exist. Do **not** build a message broker or a second cell / federation — deferred
+  until their precondition (a second cell) exists (Constitution Art. 3.4).
 - **Tool-agnostic until it isn't.** Pick concrete tools per `Component-Selection.md`; keep them
   behind the interfaces so they stay swappable (invariant #1).
 
@@ -101,15 +100,14 @@ tests/                  # one suite per milestone (M0–M7)
 
 ```bash
 pip install -e ".[dev]"
-pytest            # structural tests pass; the two exactly-once tests xfail until perform() lands
+pytest            # the full suite is green (M0–M9 complete)
 ```
 
-## Build order after M0
+## Build order (executed in full)
 
-M1 charter the Board & write the constitution (instantiate `docs/Cell-Constitution.md`) →
-M2 role contracts → M3 observability → M4 handbrake on the one flow →
-M5 compile governance (R1–R12) → M6 graduate autonomy → M7 minimal Steward.
-See `docs/One-Cell-Build-Plan.md §6` (the authoritative milestone order).
+M1 (Board + constitution) → M2 (role contracts) → M3 (observability) → M4 (handbrake) →
+M5 (governance R1–R12) → M6 (autonomy graduation) → M7 (Steward) → M8 (Optimizer) → M9 (Auditor).
+See `docs/One-Cell-Build-Plan.md` for the authoritative milestone definitions.
 
 > Note: adopting a durable-execution engine (checkpointer/replay) is a **tooling choice**
 > that implements the M0 checkpointer and the M4 handbrake replay — not a milestone of its

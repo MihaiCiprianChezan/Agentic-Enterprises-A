@@ -2,9 +2,14 @@
 Title: M0 Implementation Notes — first Claude Code session
 Version: 0.1.0
 Date: 27.06.2026
-Status: Handoff guidance (not implementation)
+Status: Historical playbook — M0 (and M0–M9) are complete
 Companion to: Build-Spec.md §2, §4 · One-Cell-Build-Plan.md M0 · CLAUDE.md
 ---
+
+> **Note (historical):** M0 is done — the durable event store and idempotent wrapper are
+> implemented and the exactly-once / kill-and-resume tests pass (no skips remain). In fact the whole
+> plan (M0–M9) is complete; see [`README.md`](../README.md). This page is retained as the original
+> step-ordered M0 playbook; references below to M0/M1 as "next" are historical.
 
 # M0 Implementation Notes
 
