@@ -56,6 +56,28 @@ def test_a_version_in_an_escalated_flow_rates_dangerous():
     assert rating.verdict == "dangerous"
 
 
+def test_a_safety_breach_on_the_first_run_rates_dangerous_not_unproven():
+    # Danger is a safety breach (Art 11), not an evidence threshold — it must not be masked by the
+    # min-runs 'unproven' rule.
+    store = InMemoryEventStore()
+    _seed_runs(store, "fq", "risky", n_pass=1, n_total=1)   # a single run (< min_runs)…
+    store.append("fq", "escalation", ActorRef("Steward", "ref"), {"stage": "quarantine"})  # …that was quarantined
+    assert _auditor(store).rate()["risky"].verdict == "dangerous"
+
+
+def test_role_comes_from_execution_not_a_shared_registry_label():
+    # Versions can share a string across roles (the reference roles all use ref-v0). The rated role
+    # must be where the version actually executed, not the registry's first (role, version) match.
+    store = InMemoryEventStore()
+    reg = VersionRegistry(store)
+    reg.register("Director", "shared")     # registered FIRST under a different role
+    reg.register("Executor", "shared")
+    _seed_runs(store, "f", "shared", n_pass=5, n_total=5)   # executes as an Executor
+    auditor = Auditor(store, reg)
+    assert auditor.rate()["shared"].role == "Executor"
+    assert [r.version for r in auditor.leaderboard("Executor")] == ["shared"]
+
+
 def test_a_version_worse_than_its_predecessor_rates_regressed():
     store = InMemoryEventStore()
     reg = VersionRegistry(store)

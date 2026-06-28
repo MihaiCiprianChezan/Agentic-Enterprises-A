@@ -67,7 +67,8 @@ class Cell:
         # Register the running versions as active so the Auditor (M9) sees the full set: the four
         # operating roles, plus each routable implementer (an Executor variant).
         for role in (director, orchestrator, executor, verifier):
-            registry.register(role.__class__.__name__, _actor_of(role, "").version)
+            actor = _actor_of(role, "")
+            registry.register(actor.role, actor.version)   # by role name, matching execute-event roles
         for im in (implementers or []):
             registry.register("Executor", im.id)
         handbrake = CellHandbrake(

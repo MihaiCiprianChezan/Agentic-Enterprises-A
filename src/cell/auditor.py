@@ -45,12 +45,13 @@ class Auditor:
         stats = version_stats(events)
         danger_flows = self._danger_flows(events)
         exec_flows = self._exec_flows(events)
+        exec_roles = self._exec_roles(events)   # the role that actually ran each version (authoritative)
         min_runs = SUSPENSION_POLICY["collapse_alert_min_runs"]
         floor = SUSPENSION_POLICY["collapse_alert_pass_rate"]
 
         ratings: dict = {}
         for version, st in stats.items():
-            role = self._role_of(version)
+            role = exec_roles.get(version) or self._role_of(version)
             pass_rate = st.passes / st.runs if st.runs else 0.0
             reasons: list = []
 
@@ -70,10 +71,12 @@ class Auditor:
             if collapsed:
                 reasons.append(f"pass_rate {pass_rate:.2f} < collapse floor {floor}")
 
-            if st.runs < min_runs:
-                verdict = "unproven"
-            elif dangerous:
+            # Danger is a safety breach (Art 11), not an evidence threshold — it overrides 'unproven'
+            # so a first-run quarantine/block is never masked.
+            if dangerous:
                 verdict = "dangerous"
+            elif st.runs < min_runs:
+                verdict = "unproven"
             elif collapsed or vs == "worse":
                 verdict = "regressed"
             else:
@@ -119,6 +122,17 @@ class Auditor:
             i = ordered.index(version)
             return ordered[i - 1] if i > 0 else None
         return None
+
+    @staticmethod
+    def _exec_roles(events) -> dict:
+        """version -> the role that actually executed it (its execute event's actor.role) — the
+        authoritative role, since versions can share a string across roles (e.g. ref-v0)."""
+        out: dict = {}
+        for e in events:
+            if e.payload.get("stage") == "execute":
+                ver = e.payload.get("implementer") or e.actor.version
+                out.setdefault(ver, e.actor.role)
+        return out
 
     @staticmethod
     def _exec_flows(events) -> dict:
