@@ -270,6 +270,13 @@ class requires. This is **constitutional input**: the Optimizer reads it and may
 the attributed event cost (§3) read across flows via `EventStore.all_events()` (the cross-flow
 signal the system roles consume, §2.1).
 
+**Suspension policy (for the Auditor, §11 / M9).** Governance also declares `SUSPENSION_POLICY` —
+the governed bounds the Auditor is bound by (Constitution Art. 11): `response_sla_hours` (24) for a
+suspended-but-critical version, the rate-limit (`max_suspensions_per_window`, `rate_limit_window_hours`)
+that makes the breaker non-cascading, and the `collapse_alert_pass_rate`/`collapse_alert_min_runs`
+**alert** threshold (a quality collapse is alert-only, never a suspension — suspension is reserved for
+a safety breach). Present now; read by the Auditor when M9 is built.
+
 ### 5.2 The rules
 Each rule = a check, an effect on violation, and its source clause.
 

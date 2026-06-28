@@ -12,6 +12,7 @@ records the amendment on the Board-acts audit trail (Art. 8.3, 10.2; tamper-evid
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
@@ -105,6 +106,24 @@ class AutonomyBoard:
             "to": proposal.to_level, "evidence": proposal.evidence,
         })
         return amended
+
+    def ratify_amendment(self, article: str, content: dict, ratifier: ActorRef) -> dict:
+        """Ratify a constitutional-*content* amendment (e.g. the version-suspension policy, Art. 11) —
+        distinct from the ceiling-raise `ratify`: this content is read by the Auditor, not the
+        governance gate, so there is no registry to re-compile. Authorized by the Board (Art. 8.2),
+        logged on the Board-acts trail (Art. 8.3); a non-Board ratifier is refused and the refusal
+        recorded (invariant #10)."""
+        if not self._is_board(ratifier):
+            self._store.append(BOARD_TRAIL, "governance", ratifier, {
+                "stage": "amendment", "decision": "block", "clause": "Art. 8.2",
+                "article": article, "reason": "only the Board may ratify an amendment (Art. 8.2)"})
+            raise AmendmentRefused("only the Board may ratify a constitutional amendment (Art. 8.2)")
+        # Deep-copy so a later mutation of the caller's dict cannot alter the recorded act (the
+        # payload is re-hashed by verify_chain — a shared reference would break tamper-evidence).
+        self._store.append(BOARD_TRAIL, "governance", ratifier, {
+            "stage": "amendment", "decision": "ratified", "clause": "Art. 8.3",
+            "article": article, "content": copy.deepcopy(content)})
+        return content   # the stored record is an independent deep copy; the caller keeps its own dict
 
     def _is_board(self, actor: ActorRef) -> bool:
         return getattr(actor, "mode", "agent") == "human" and actor.version in self._members

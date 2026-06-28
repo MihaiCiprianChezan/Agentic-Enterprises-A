@@ -10,7 +10,7 @@ Companion to: Agentic-First-Enterprises.md · One-Cell-Build-Plan.md · Cell-Con
 
 This document instantiates milestone **M2** of the build plan: the explicit interface for each role the cell binds to. The system depends on these contracts, never on whether an agent or a human implements them (invariant #1). Each contract uses the model's standard shape (§2): responsibility, inputs, outputs, authority scope, acceptance criteria, escalation rule, observability hooks.
 
-These are written **generically**, matching the constitution. The `«placeholders»` are the only workflow-specific parts. Six contracts: four operating roles (Director, Orchestrator, Executor, Verifier) and two system roles (Steward, and the Optimizer — instantiated at M8 now its precondition holds). The Auditor remains deferred (Constitution Art. 3.4) and is not contracted here.
+These are written **generically**, matching the constitution. The `«placeholders»` are the only workflow-specific parts. Six contracts: four operating roles (Director, Orchestrator, Executor, Verifier) and two system roles (Steward, and the Optimizer — instantiated at M8 now its precondition holds). The Auditor remains deferred in code (Constitution Art. 3.4) and is not contracted here yet — but its governed bounds are now ratified (Constitution Article 11 + `SUSPENSION_POLICY`): suspension reserved for danger, rate-limited/non-cascading, with a 24-hour human-response SLA. Contracting it (M9) is unblocked.
 
 All five share these **invariants** (do not repeat them per role):
 
