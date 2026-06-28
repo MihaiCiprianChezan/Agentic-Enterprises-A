@@ -13,14 +13,15 @@ The full design lives in `docs/` and is the source of truth. Code must conform t
 
 ## Read the design before coding (in this order)
 
+0. `docs/Anatomy-of-a-Run.md` — the operational overview: one ticket → verified PR, role by role. Start here for the big picture.
 1. `docs/Agentic-First-Enterprises.md` — the model. The 11 design invariants in §1 are non-negotiable.
-2. `docs/One-Cell-Build-Plan.md` — the MVP plan and milestone order (M0–M7).
-3. `docs/Cell-Constitution.md` — the constitution this cell runs under (Articles 1–10).
-4. `docs/Role-Contracts.md` — the five role interfaces (M2).
+2. `docs/One-Cell-Build-Plan.md` — the build plan and milestone order (M0–M9).
+3. `docs/Cell-Constitution.md` — the constitution this cell runs under (Articles 1–11).
+4. `docs/Role-Contracts.md` — the seven role contracts (four operating + three system roles).
 5. `docs/Handbrake-Interface.md` — the control plane (M4).
 6. `docs/Build-Spec.md` — **the spec code is built against**: schemas (§1–2), trace/cost (§3),
    the idempotency wrapper (§4), and the governance rule set R1–R12 (§5).
-7. `docs/Component-Selection.md` — capability → tool mapping; what M0 needs vs. what to defer.
+7. `docs/Component-Selection.md` — capability → tool mapping; what's built vs. deferred.
 
 ## The invariants that constrain every line of code
 

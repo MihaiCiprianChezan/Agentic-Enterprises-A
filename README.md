@@ -129,6 +129,9 @@ hiding it. `--full` dumps complete event payloads. See **[docs/Using-a-Cell.md](
 
 ## Read the design (the source of truth)
 
+**New here? Start with [`docs/Anatomy-of-a-Run.md`](docs/Anatomy-of-a-Run.md)** — it walks one
+ticket → verified PR, role by role, with the exact `observe` output of a real run.
+
 The docs are authoritative — if code and a doc disagree, the doc wins (or the doc is amended first).
 
 1. [`Agentic-First-Enterprises.md`](docs/Agentic-First-Enterprises.md) — the model; the 11 design invariants are non-negotiable.
