@@ -52,6 +52,11 @@ pip install -e ".[dev]"
 pytest            # the full deterministic, offline suite
 ```
 
+CI (GitHub Actions) runs the suite on Python 3.11–3.14 × Ubuntu/Windows, plus the quality
+gates: `ruff check`, `ruff format --check`, and `mypy` (strict on `src/cell`). Run them
+locally the same way, or `pip install pre-commit && pre-commit install` to run them on
+every commit.
+
 ## Watch it work (no LLM, no network)
 
 The demo assembles a `Cell` and runs the five definition-of-done scenarios on deterministic
