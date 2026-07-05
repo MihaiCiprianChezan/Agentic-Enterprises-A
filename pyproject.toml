@@ -2,6 +2,8 @@
 name = "agent-native-cell"
 version = "0.1.0"
 description = "One sovereign cell of the Agent-Native Enterprise (software-delivery MVP)."
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = []
 
@@ -9,7 +11,7 @@ dependencies = []
 dev = ["pytest>=8.0"]
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
