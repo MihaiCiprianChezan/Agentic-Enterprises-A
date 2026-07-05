@@ -5,13 +5,20 @@ repos / fake effects stand in for the real CLI agent, gh, and sandbox repo. No L
 from __future__ import annotations
 
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from cell.cell import Cell
-from cell.domain.objects import ActorRef, BudgetCap, Criterion, CriterionScore, Goal, Output, Verdict, WorkItem
+from cell.domain.objects import (
+    ActorRef,
+    BudgetCap,
+    Criterion,
+    Goal,
+    Output,
+    WorkItem,
+)
 from cell.planes.memory import CostDelta
 from cell.runtime.deliver import deliver_on_pass
 from cell.runtime.real_executor import ExecutorError, RealExecutor
@@ -38,14 +45,16 @@ def test_claude_preset_parses_token_usage_from_json():
     assert spec.usage_parser is not None
     cost = spec.usage_parser('{"result":"ok","usage":{"input_tokens":1000,"output_tokens":500}}')
     assert cost.compute == 1500 and cost.units == "tokens"
-    assert spec.usage_parser("not json at all") is None       # parse failure → no cost, not a crash
+    assert spec.usage_parser("not json at all") is None  # parse failure → no cost, not a crash
 
 
 def test_runner_sets_cost_from_the_specs_usage_parser(tmp_path):
     spec = CliAgentSpec(
         argv_template=["python", "-c", "print('TOKENS=7')"],
-        permission_args=[], instruction_file="X",
-        usage_parser=lambda out: CostDelta(compute=7.0) if "TOKENS=7" in out else None)
+        permission_args=[],
+        instruction_file="X",
+        usage_parser=lambda out: CostDelta(compute=7.0) if "TOKENS=7" in out else None,
+    )
     res = CliAgentRunner(spec).run("p", str(tmp_path))
     assert res.cost is not None and res.cost.compute == 7.0
 
@@ -54,10 +63,14 @@ def test_runner_survives_a_throwing_usage_parser(tmp_path):
     def boom(_out):
         raise ValueError("bad usage shape")
 
-    spec = CliAgentSpec(argv_template=["python", "-c", "print('ok')"],
-                        permission_args=[], instruction_file="X", usage_parser=boom)
+    spec = CliAgentSpec(
+        argv_template=["python", "-c", "print('ok')"],
+        permission_args=[],
+        instruction_file="X",
+        usage_parser=boom,
+    )
     res = CliAgentRunner(spec).run("p", str(tmp_path))
-    assert res.returncode == 0 and res.cost is None      # best-effort: never fails the run
+    assert res.returncode == 0 and res.cost is None  # best-effort: never fails the run
 
 
 def test_claude_usage_parser_tolerates_non_numeric_tokens():
@@ -81,9 +94,14 @@ def test_runner_passes_the_prompt_on_stdin(tmp_path):
     # The prompt must reach the agent via stdin (so a multi-line prompt can't be mangled by a
     # Windows .CMD shim and the permission flags after it aren't dropped).
     spec = CliAgentSpec(
-        argv_template=["python", "-c",
-                       "import sys, pathlib; pathlib.Path('got.txt').write_text(sys.stdin.read())"],
-        permission_args=[], instruction_file="X")
+        argv_template=[
+            "python",
+            "-c",
+            "import sys, pathlib; pathlib.Path('got.txt').write_text(sys.stdin.read())",
+        ],
+        permission_args=[],
+        instruction_file="X",
+    )
     CliAgentRunner(spec).run("the real prompt", str(tmp_path))
     assert (tmp_path / "got.txt").read_text() == "the real prompt"
 
@@ -92,11 +110,16 @@ def test_runner_encodes_the_prompt_as_utf8_on_stdin(tmp_path):
     # A non-ASCII prompt must reach the agent as UTF-8 regardless of the platform's locale
     # codepage. The child reads raw bytes so the assertion is deterministic cross-platform.
     spec = CliAgentSpec(
-        argv_template=["python", "-c",
-                       "import sys, pathlib; pathlib.Path('got.bin').write_bytes(sys.stdin.buffer.read())"],
-        permission_args=[], instruction_file="X")
+        argv_template=[
+            "python",
+            "-c",
+            "import sys, pathlib; pathlib.Path('got.bin').write_bytes(sys.stdin.buffer.read())",
+        ],
+        permission_args=[],
+        instruction_file="X",
+    )
     CliAgentRunner(spec).run("café — slugify ✨", str(tmp_path))
-    assert (tmp_path / "got.bin").read_bytes() == "café — slugify ✨".encode("utf-8")
+    assert (tmp_path / "got.bin").read_bytes() == "café — slugify ✨".encode()
 
 
 def test_runner_raises_on_an_empty_argv_template(tmp_path):
@@ -108,29 +131,38 @@ def test_runner_raises_on_an_empty_argv_template(tmp_path):
 def test_runner_runs_a_real_subprocess_in_cwd(tmp_path):
     spec = CliAgentSpec(
         argv_template=["python", "-c", "import pathlib; pathlib.Path('out.txt').write_text('hi')"],
-        permission_args=[], instruction_file="X")
+        permission_args=[],
+        instruction_file="X",
+    )
     result = CliAgentRunner(spec).run("ignored", str(tmp_path))
     assert result.returncode == 0
     assert (tmp_path / "out.txt").read_text() == "hi"
 
 
 def test_runner_reports_a_nonzero_exit(tmp_path):
-    spec = CliAgentSpec(argv_template=["python", "-c", "import sys; sys.exit(3)"],
-                        permission_args=[], instruction_file="X")
+    spec = CliAgentSpec(
+        argv_template=["python", "-c", "import sys; sys.exit(3)"],
+        permission_args=[],
+        instruction_file="X",
+    )
     result = CliAgentRunner(spec).run("", str(tmp_path))
     assert result.returncode == 3
 
 
 def test_runner_raises_on_missing_binary(tmp_path):
-    spec = CliAgentSpec(argv_template=["definitely-not-a-real-binary-zzz"],
-                        permission_args=[], instruction_file="X")
+    spec = CliAgentSpec(
+        argv_template=["definitely-not-a-real-binary-zzz"], permission_args=[], instruction_file="X"
+    )
     with pytest.raises(RunnerError):
         CliAgentRunner(spec).run("", str(tmp_path))
 
 
 def test_runner_times_out(tmp_path):
-    spec = CliAgentSpec(argv_template=["python", "-c", "import time; time.sleep(5)"],
-                        permission_args=[], instruction_file="X")
+    spec = CliAgentSpec(
+        argv_template=["python", "-c", "import time; time.sleep(5)"],
+        permission_args=[],
+        instruction_file="X",
+    )
     result = CliAgentRunner(spec, timeout=1).run("", str(tmp_path))
     assert result.timed_out is True
 
@@ -145,16 +177,26 @@ def test_fake_runner_applies_the_change(tmp_path):
 def _init_repo(path: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=path, check=True)
     Path(path, "README.md").write_text("seed\n")
-    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"], cwd=path, check=True)
-    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "seed"],
-                   cwd=path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"], cwd=path, check=True
+    )
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "seed"],
+        cwd=path,
+        check=True,
+    )
 
 
 def _work_item() -> WorkItem:
-    return WorkItem(id="wi-1", goal_id="g-1", description="add greeting.txt",
-                    assigned_to=ActorRef("Executor", "x"), action_class="CLASS_OWN_WRITE",
-                    authority_level="L2",
-                    acceptance_criteria=[Criterion(id="c1", statement="file exists", kind="test")])
+    return WorkItem(
+        id="wi-1",
+        goal_id="g-1",
+        description="add greeting.txt",
+        assigned_to=ActorRef("Executor", "x"),
+        action_class="CLASS_OWN_WRITE",
+        authority_level="L2",
+        acceptance_criteria=[Criterion(id="c1", statement="file exists", kind="test")],
+    )
 
 
 def test_real_executor_commits_the_change_and_returns_an_output(tmp_path):
@@ -163,7 +205,9 @@ def test_real_executor_commits_the_change_and_returns_an_output(tmp_path):
     out = RealExecutor(runner, str(tmp_path), "feat/wi-1").execute(_work_item())
     assert out.work_item_id == "wi-1"
     assert out.artifact_ref.startswith("branch:feat/wi-1@")
-    log = subprocess.run(["git", "log", "--oneline", "-1"], cwd=tmp_path, capture_output=True, text=True)
+    log = subprocess.run(
+        ["git", "log", "--oneline", "-1"], cwd=tmp_path, capture_output=True, text=True
+    )
     assert "cell:" in log.stdout
 
 
@@ -186,16 +230,26 @@ def test_real_executor_raises_on_agent_failure(tmp_path):
 
 
 def _goal() -> Goal:
-    return Goal(id="g-1", ticket_id="t-1", outcome="x",
-                acceptance_criteria=[Criterion(id="c1", statement="tests pass", kind="test")],
-                budget_cap=BudgetCap(compute=1, wall_clock_ms=1),
-                created_by=ActorRef("Director", "x"), created_at=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    return Goal(
+        id="g-1",
+        ticket_id="t-1",
+        outcome="x",
+        acceptance_criteria=[Criterion(id="c1", statement="tests pass", kind="test")],
+        budget_cap=BudgetCap(compute=1, wall_clock_ms=1),
+        created_by=ActorRef("Director", "x"),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
 
 
 def _output() -> Output:
-    return Output(id="out-1", work_item_id="wi-1", artifact_ref="branch:x@1",
-                  produced_by=ActorRef("Executor", "x"), trace_ref="t",
-                  produced_at=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    return Output(
+        id="out-1",
+        work_item_id="wi-1",
+        artifact_ref="branch:x@1",
+        produced_by=ActorRef("Executor", "x"),
+        trace_ref="t",
+        produced_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
 
 
 def test_real_verifier_passes_on_green_tests(tmp_path):
@@ -221,12 +275,21 @@ def test_deliver_opens_a_pr_through_perform():
         return "https://github.com/x/y/pull/1"
 
     actor = ActorRef("Executor", "real-cli")
-    url = deliver_on_pass(cell, "f1", "feat/wi-1", actor=actor, title="t", body="b",
-                          repo_dir="/tmp/x", effect=fake_effect)
+    url = deliver_on_pass(
+        cell,
+        "f1",
+        "feat/wi-1",
+        actor=actor,
+        title="t",
+        body="b",
+        repo_dir="/tmp/x",
+        effect=fake_effect,
+    )
     assert url == "https://github.com/x/y/pull/1"
     assert calls["n"] == 1
-    assert any(e.kind == "action" and e.payload.get("idempotency_key")
-               for e in cell.store.read("f1"))  # the PR-open is on the durable trace
+    assert any(
+        e.kind == "action" and e.payload.get("idempotency_key") for e in cell.store.read("f1")
+    )  # the PR-open is on the durable trace
 
 
 def test_deliver_is_exactly_once_on_resume():
@@ -260,14 +323,23 @@ def test_deliver_does_not_reopen_a_pr_left_in_flight():
         return "https://github.com/x/y/pull/1"
 
     with pytest.raises(IrreversibleInFlight):
-        deliver_on_pass(cell, "f9", "feat/wi-1", actor=ActorRef("Executor", "real-cli"),
-                        title="t", body="b", repo_dir="/tmp/x", effect=fake_effect)
+        deliver_on_pass(
+            cell,
+            "f9",
+            "feat/wi-1",
+            actor=ActorRef("Executor", "real-cli"),
+            title="t",
+            body="b",
+            repo_dir="/tmp/x",
+            effect=fake_effect,
+        )
     assert calls["n"] == 0  # never re-opened
 
 
 def test_live_is_opt_in(capsys, monkeypatch):
     monkeypatch.delenv("CELL_LIVE", raising=False)
     from cell import live
+
     live.main()
     out = capsys.readouterr().out
     assert "opt-in" in out.lower()
@@ -275,14 +347,16 @@ def test_live_is_opt_in(capsys, monkeypatch):
 
 def test_real_verifier_returns_when_the_runner_is_missing(tmp_path):
     Path(tmp_path, "test_ok.py").write_text("def test_ok():\n    assert True\n")
-    verdict = RealVerifier(str(tmp_path),
-                           test_cmd=("definitely-not-a-real-binary-zzz",)).verify(_output(), _goal())
+    verdict = RealVerifier(str(tmp_path), test_cmd=("definitely-not-a-real-binary-zzz",)).verify(
+        _output(), _goal()
+    )
     assert verdict.decision == "return"
     assert "not found" in verdict.reason.lower()
 
 
 def test_real_verifier_returns_on_timeout(tmp_path):
-    verdict = RealVerifier(str(tmp_path), test_cmd=("python", "-c", "import time; time.sleep(5)"),
-                           timeout=1).verify(_output(), _goal())
+    verdict = RealVerifier(
+        str(tmp_path), test_cmd=("python", "-c", "import time; time.sleep(5)"), timeout=1
+    ).verify(_output(), _goal())
     assert verdict.decision == "return"
     assert "timed out" in verdict.reason.lower()

@@ -26,11 +26,17 @@ HUMAN = ActorRef(role="Executor", version="human:alice", mode="human")
 
 
 def _action(action_class: str) -> ActionDescriptor:
-    return ActionDescriptor(id="a1", action_class=action_class, effect_kind="compensable",
-                            idempotency_key="k1", intent={})
+    return ActionDescriptor(
+        id="a1",
+        action_class=action_class,
+        effect_kind="compensable",
+        idempotency_key="k1",
+        intent={},
+    )
 
 
 # --- the acceptance: an L0 action is blocked and traces to a clause ----------
+
 
 def test_l0_action_is_blocked_and_cites_a_clause():
     gov = RuleSetGovernance()
@@ -54,13 +60,14 @@ def test_novel_action_is_forced_to_l0_with_a_proposal():
 
 def test_safe_classes_are_allowed():
     gov = RuleSetGovernance()
-    assert gov.decide(_action("CLASS_READ"), AGENT).allowed is True       # L3
-    assert gov.decide(_action("CLASS_SANDBOX"), AGENT).allowed is True    # L3
-    own = gov.decide(_action("CLASS_OWN_WRITE"), AGENT)                   # L2
+    assert gov.decide(_action("CLASS_READ"), AGENT).allowed is True  # L3
+    assert gov.decide(_action("CLASS_SANDBOX"), AGENT).allowed is True  # L3
+    own = gov.decide(_action("CLASS_OWN_WRITE"), AGENT)  # L2
     assert own.allowed is True and own.level == "L2"
 
 
 # --- R11: a human in a Role cannot exceed its ceiling via the Handbrake -------
+
 
 def test_human_cannot_take_an_l0_action():
     gov = RuleSetGovernance()
@@ -71,6 +78,7 @@ def test_human_cannot_take_an_l0_action():
 
 
 # --- R6/R12: every decision is logged with its clause ------------------------
+
 
 def test_block_is_logged_with_its_clause():
     gov = RuleSetGovernance()
@@ -94,6 +102,7 @@ def test_allow_is_logged_too():
 
 # --- §5.4: the compiled set is traceable -------------------------------------
 
+
 def test_every_rule_traces_to_a_clause():
     # The attestation property: no enforced rule without a clause it cites.
     assert set(RULE_CLAUSES) == {f"R{i}" for i in range(1, 13)}
@@ -101,6 +110,7 @@ def test_every_rule_traces_to_a_clause():
 
 
 # --- integration: the wrapper blocks an L0 effect before it fires ------------
+
 
 def test_perform_blocks_an_l0_effect():
     gov = RuleSetGovernance()

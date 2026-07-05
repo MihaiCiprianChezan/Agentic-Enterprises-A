@@ -21,10 +21,11 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from os import PathLike
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if TYPE_CHECKING:  # type-only; avoids a runtime import while binding to the contract (#1)
     from cell.planes.memory import EventStore
@@ -35,22 +36,24 @@ EffectKind = Literal["idempotent", "compensable", "irreversible"]
 @dataclass(frozen=True)
 class ActionDescriptor:
     """Build-Spec §4.1. `idempotency_key` is deterministic for 'the same effect'."""
+
     id: str
     action_class: str
     effect_kind: EffectKind
     idempotency_key: str
     intent: dict[str, Any]
-    compensation: Optional[dict[str, Any]] = None
+    compensation: dict[str, Any] | None = None
 
 
 @dataclass
 class EffectRecord:
     """Build-Spec §4.2. `attempts` exists for at-most-once accounting on irreversible effects."""
+
     idempotency_key: str
     status: Literal["in_flight", "completed", "failed"]
     attempts: int = 0
-    result_digest: Optional[str] = None
-    at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    result_digest: str | None = None
+    at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 def make_idempotency_key(flow_id: str, step: str, intent: dict[str, Any]) -> str:
@@ -62,7 +65,7 @@ def make_idempotency_key(flow_id: str, step: str, intent: dict[str, Any]) -> str
 class EffectsLedger(Protocol):
     """Durable record of every external effect, keyed by idempotency_key."""
 
-    def get(self, key: str) -> Optional[EffectRecord]: ...
+    def get(self, key: str) -> EffectRecord | None: ...
     def put_in_flight(self, key: str) -> EffectRecord: ...
     def mark_completed(self, key: str, result_digest: str) -> None: ...
     def mark_failed(self, key: str) -> None: ...
@@ -93,8 +96,8 @@ def perform(
     execute: Callable[[ActionDescriptor], str],
     ledger: EffectsLedger,
     governance: GovernanceCheck,
-    store: Optional["EventStore"] = None,
-    flow_id: Optional[str] = None,
+    store: EventStore | None = None,
+    flow_id: str | None = None,
 ) -> str:
     """Execute an external effect exactly-once / at-most-once across resume.
 
@@ -126,6 +129,7 @@ def perform(
     if rec is not None:
         if rec.status == "completed":
             # The exactly-once guarantee: never re-execute a completed effect.
+            assert rec.result_digest is not None  # mark_completed always records the digest
             return rec.result_digest
         if rec.status == "in_flight":
             if action.effect_kind == "irreversible":
@@ -158,18 +162,24 @@ def perform(
     #    no audit record (R12). A cached resume returns above without re-appending, so
     #    exactly-once extends to the log. (Cost attribution is M3.)
     if store is not None and flow_id is not None:
-        store.append(flow_id, "action", actor, {
-            "action_id": action.id,
-            "action_class": action.action_class,
-            "effect_kind": action.effect_kind,
-            "idempotency_key": key,
-            "result_digest": result,
-        })
+        store.append(
+            flow_id,
+            "action",
+            actor,
+            {
+                "action_id": action.id,
+                "action_class": action.action_class,
+                "effect_kind": action.effect_kind,
+                "idempotency_key": key,
+                "result_digest": result,
+            },
+        )
     ledger.mark_completed(key, result)
     return result
 
 
 # --- in-memory reference ledger (for the M0 spike / tests) -------------------
+
 
 class InMemoryEffectsLedger:
     """Correct, not durable. The M0 acceptance test must pass with a DURABLE ledger
@@ -178,10 +188,10 @@ class InMemoryEffectsLedger:
     def __init__(self) -> None:
         self._records: dict[str, EffectRecord] = {}
 
-    def get(self, key):
+    def get(self, key: str) -> EffectRecord | None:
         return self._records.get(key)
 
-    def put_in_flight(self, key):
+    def put_in_flight(self, key: str) -> EffectRecord:
         rec = self._records.get(key)
         if rec is None:
             rec = EffectRecord(idempotency_key=key, status="in_flight", attempts=0)
@@ -190,12 +200,12 @@ class InMemoryEffectsLedger:
         self._records[key] = rec
         return rec
 
-    def mark_completed(self, key, result_digest):
+    def mark_completed(self, key: str, result_digest: str) -> None:
         rec = self._records[key]
         rec.status = "completed"
         rec.result_digest = result_digest
 
-    def mark_failed(self, key):
+    def mark_failed(self, key: str) -> None:
         rec = self._records[key]
         rec.status = "failed"
 
@@ -220,28 +230,30 @@ class SqliteEffectsLedger:
     """Durable EffectsLedger. Each mutating call commits before returning, so an
     `in_flight` row recorded before a side effect survives a crash mid-effect."""
 
-    def __init__(self, path: Union[str, PathLike]) -> None:
+    def __init__(self, path: str | PathLike) -> None:
         self._conn = sqlite3.connect(str(path))
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_LEDGER_SCHEMA)
         self._conn.commit()
 
-    def get(self, key: str) -> Optional[EffectRecord]:
+    def get(self, key: str) -> EffectRecord | None:
         row = self._conn.execute(
             "SELECT * FROM effects WHERE idempotency_key = ?", (key,)
         ).fetchone()
         if row is None:
             return None
         return EffectRecord(
-            idempotency_key=row["idempotency_key"], status=row["status"],
-            attempts=row["attempts"], result_digest=row["result_digest"],
+            idempotency_key=row["idempotency_key"],
+            status=row["status"],
+            attempts=row["attempts"],
+            result_digest=row["result_digest"],
             at=datetime.fromisoformat(row["at"]),
         )
 
     def put_in_flight(self, key: str) -> EffectRecord:
         # Insert-or-bump in one committed transaction. The commit is what makes the
         # in-flight marker outlive a crash in the subsequent effect.
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         with self._conn:
             self._conn.execute(
                 "INSERT INTO effects (idempotency_key, status, attempts, at) "
@@ -250,7 +262,9 @@ class SqliteEffectsLedger:
                 "status = 'in_flight', attempts = attempts + 1, at = excluded.at",
                 (key, now),
             )
-        return self.get(key)
+        rec = self.get(key)
+        assert rec is not None  # the committed upsert above guarantees the row exists
+        return rec
 
     def mark_completed(self, key: str, result_digest: str) -> None:
         with self._conn:

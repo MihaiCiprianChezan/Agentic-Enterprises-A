@@ -39,12 +39,16 @@ GOV = PermissiveGovernance()
 
 def _action(kind: str) -> ActionDescriptor:
     return ActionDescriptor(
-        id="a1", action_class="CLASS_EXTERNAL_COMM", effect_kind=kind,
-        idempotency_key=KEY, intent={"t": "x"},
+        id="a1",
+        action_class="CLASS_EXTERNAL_COMM",
+        effect_kind=kind,
+        idempotency_key=KEY,
+        intent={"t": "x"},
     )
 
 
 # --- durable ledger unit tests -----------------------------------------------
+
 
 def test_ledger_get_absent_is_none(tmp_path):
     led = SqliteEffectsLedger(tmp_path / "led.db")
@@ -91,6 +95,7 @@ def test_ledger_mark_failed(tmp_path):
 
 
 # --- the kill-and-resume gate ------------------------------------------------
+
 
 def _run_worker(db: str, mode: str, target: str) -> int:
     env = dict(os.environ)

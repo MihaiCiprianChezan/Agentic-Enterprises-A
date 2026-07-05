@@ -48,9 +48,14 @@ class RefDirector:
             kind="review",
         )
         return Goal(
-            id=f"goal-{ticket.id}", ticket_id=ticket.id, outcome=ticket.title,
-            acceptance_criteria=[criterion], budget_cap=_BUDGET,
-            created_by=DIRECTOR, created_at=ticket.received_at, in_purpose=True,
+            id=f"goal-{ticket.id}",
+            ticket_id=ticket.id,
+            outcome=ticket.title,
+            acceptance_criteria=[criterion],
+            budget_cap=_BUDGET,
+            created_by=DIRECTOR,
+            created_at=ticket.received_at,
+            in_purpose=True,
         )
 
 
@@ -62,9 +67,12 @@ class RefOrchestrator:
     def decompose(self, goal: Goal) -> list[WorkItem]:
         return [
             WorkItem(
-                id=f"wi-{goal.id}", goal_id=goal.id,
-                description=f"Implement: {goal.outcome}", assigned_to=EXECUTOR,
-                action_class="CLASS_OWN_WRITE", authority_level="L2",
+                id=f"wi-{goal.id}",
+                goal_id=goal.id,
+                description=f"Implement: {goal.outcome}",
+                assigned_to=EXECUTOR,
+                action_class="CLASS_OWN_WRITE",
+                authority_level="L2",
                 acceptance_criteria=list(goal.acceptance_criteria),
             )
         ]
@@ -77,9 +85,12 @@ class RefExecutor:
 
     def execute(self, item: WorkItem) -> Output:
         return Output(
-            id=f"out-{item.id}", work_item_id=item.id,
-            artifact_ref=f"branch://{item.id}", produced_by=EXECUTOR,
-            trace_ref=f"trace://{item.id}", produced_at=_T0,
+            id=f"out-{item.id}",
+            work_item_id=item.id,
+            artifact_ref=f"branch://{item.id}",
+            produced_by=EXECUTOR,
+            trace_ref=f"trace://{item.id}",
+            produced_at=_T0,
         )
 
 
@@ -90,12 +101,13 @@ class RefVerifier:
     actor = VERIFIER
 
     def verify(self, output: Output, goal: Goal) -> Verdict:
-        scores = [
-            CriterionScore(criterion_id=c.id, result="met")
-            for c in goal.acceptance_criteria
-        ]
+        scores = [CriterionScore(criterion_id=c.id, result="met") for c in goal.acceptance_criteria]
         return Verdict(
-            id=f"verdict-{output.id}", output_id=output.id, decision="pass",
-            scores=scores, reason="all acceptance criteria met",
-            verified_by=VERIFIER, verified_at=_T0,
+            id=f"verdict-{output.id}",
+            output_id=output.id,
+            decision="pass",
+            scores=scores,
+            reason="all acceptance criteria met",
+            verified_by=VERIFIER,
+            verified_at=_T0,
         )

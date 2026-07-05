@@ -10,25 +10,27 @@ PermissiveGovernance is dev-only.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from datetime import datetime
+from typing import Any
 
-from cell.domain.objects import ActorRef, Ticket, Verdict
+from cell.auditor import Auditor, BreakerResult
+from cell.domain.objects import ActorRef, BudgetCap, Ticket, Verdict
 from cell.effects.wrapper import EffectsLedger, GovernanceCheck, InMemoryEffectsLedger
 from cell.flow import _actor_of
 from cell.handbrake import Briefing, CellHandbrake, Paused
 from cell.planes.governance import RuleSetGovernance
-from cell.planes.memory import EventStore, InMemoryEventStore
-from cell.planes.observability import InMemoryTraceStore, TraceStore, total_cost
+from cell.planes.memory import CostDelta, Event, EventStore, InMemoryEventStore
+from cell.planes.observability import InMemoryTraceStore, TraceSpan, TraceStore, total_cost
 from cell.roles.contracts import Director, Executor, Orchestrator, Verifier
 from cell.roles.reference import RefDirector, RefExecutor, RefOrchestrator, RefVerifier
-from cell.auditor import Auditor
 from cell.steward import Steward, StewardAction
-from cell.versions import VersionRegistry, version_stats
+from cell.versions import VersionRecord, VersionRegistry, VersionStat, version_stats
 
 
 @dataclass
 class Cell:
     """The wired cell. Build it with `Cell.assemble(...)`."""
+
     director: Director
     orchestrator: Orchestrator
     executor: Executor
@@ -39,21 +41,28 @@ class Cell:
     recorder: TraceStore
     steward: Steward
     handbrake: CellHandbrake
-    registry: Any = None
-    auditor: Any = None
+    registry: VersionRegistry | None = None
+    auditor: Auditor | None = None
 
     @classmethod
-    def assemble(cls, *, director: Optional[Director] = None,
-                 orchestrator: Optional[Orchestrator] = None,
-                 executor: Optional[Executor] = None,
-                 verifier: Optional[Verifier] = None,
-                 store: Optional[EventStore] = None,
-                 governance: Optional[GovernanceCheck] = None,
-                 ledger: Optional[EffectsLedger] = None,
-                 recorder: Optional[TraceStore] = None,
-                 loop_threshold: int = 3, cost_model: Any = None,
-                 max_revisions: int = 2, clock: Any = None,
-                 optimizer: Any = None, implementers: Any = None) -> "Cell":
+    def assemble(
+        cls,
+        *,
+        director: Director | None = None,
+        orchestrator: Orchestrator | None = None,
+        executor: Executor | None = None,
+        verifier: Verifier | None = None,
+        store: EventStore | None = None,
+        governance: GovernanceCheck | None = None,
+        ledger: EffectsLedger | None = None,
+        recorder: TraceStore | None = None,
+        loop_threshold: int = 3,
+        cost_model: Any = None,
+        max_revisions: int = 2,
+        clock: Any = None,
+        optimizer: Any = None,
+        implementers: Any = None,
+    ) -> Cell:
         director = director or RefDirector()
         orchestrator = orchestrator or RefOrchestrator()
         executor = executor or RefExecutor()
@@ -68,21 +77,46 @@ class Cell:
         # operating roles, plus each routable implementer (an Executor variant).
         for role in (director, orchestrator, executor, verifier):
             actor = _actor_of(role, "")
-            registry.register(actor.role, actor.version)   # by role name, matching execute-event roles
-        for im in (implementers or []):
+            registry.register(
+                actor.role, actor.version
+            )  # by role name, matching execute-event roles
+        for im in implementers or []:
             registry.register("Executor", im.id)
         handbrake = CellHandbrake(
-            director=director, orchestrator=orchestrator, executor=executor,
-            verifier=verifier, store=store, ledger=ledger, governance=governance,
-            recorder=recorder, cost_model=cost_model, max_revisions=max_revisions, clock=clock,
-            optimizer=optimizer, implementers=implementers, registry=registry)
+            director=director,
+            orchestrator=orchestrator,
+            executor=executor,
+            verifier=verifier,
+            store=store,
+            ledger=ledger,
+            governance=governance,
+            recorder=recorder,
+            cost_model=cost_model,
+            max_revisions=max_revisions,
+            clock=clock,
+            optimizer=optimizer,
+            implementers=implementers,
+            registry=registry,
+        )
         auditor = Auditor(store, registry)
-        return cls(director, orchestrator, executor, verifier, store, governance,
-                   ledger, recorder, steward, handbrake, registry, auditor)
+        return cls(
+            director,
+            orchestrator,
+            executor,
+            verifier,
+            store,
+            governance,
+            ledger,
+            recorder,
+            steward,
+            handbrake,
+            registry,
+            auditor,
+        )
 
     # -- operations (delegate to the control plane / steward) -----------------
 
-    def submit(self, ticket: Ticket, flow_id: str) -> Union[Verdict, Paused]:
+    def submit(self, ticket: Ticket, flow_id: str) -> Verdict | Paused:
         return self.handbrake.start(ticket, flow_id)
 
     def inspect(self, flow_id: str) -> Briefing:
@@ -91,49 +125,53 @@ class Cell:
     def inject(self, flow_id: str, value: dict, actor: ActorRef) -> None:
         return self.handbrake.inject(flow_id, value, actor)
 
-    def resume(self, flow_id: str) -> Union[Verdict, Paused]:
+    def resume(self, flow_id: str) -> Verdict | Paused:
         return self.handbrake.resume(flow_id)
 
-    def replay(self, flow_id: str, to_step: Optional[str] = None) -> list[dict]:
+    def replay(self, flow_id: str, to_step: str | None = None) -> list[dict]:
         return self.handbrake.replay(flow_id, to_step)
 
-    def set_breakpoint(self, flow_id: str, step: str, kind: str = "static",
-                       condition: Optional[str] = None) -> str:
+    def set_breakpoint(
+        self, flow_id: str, step: str, kind: str = "static", condition: str | None = None
+    ) -> str:
         return self.handbrake.set_breakpoint(flow_id, step, kind, condition)
 
-    def assess(self, flow_id: str, budget_cap) -> StewardAction:
+    def assess(self, flow_id: str, budget_cap: BudgetCap) -> StewardAction:
         return self.steward.assess(flow_id, budget_cap)
 
     # -- read helpers (for tests / the demo) ----------------------------------
 
-    def trace(self, flow_id: str):
+    def trace(self, flow_id: str) -> list[TraceSpan]:
         return self.recorder.spans(flow_id)
 
-    def cost(self, flow_id: str):
+    def cost(self, flow_id: str) -> CostDelta:
         return total_cost(self.store.read(flow_id))
 
-    def governance_log(self, flow_id: str):
+    def governance_log(self, flow_id: str) -> list[Event]:
         """All governance-plane events for the flow — both the _govern action-site gate decisions and any R11 injection blocks."""
         return [e for e in self.store.read(flow_id) if e.kind == "governance"]
 
-    def events(self, flow_id: str):
+    def events(self, flow_id: str) -> list[Event]:
         return self.store.read(flow_id)
 
-    def versions(self):
+    def versions(self) -> dict[tuple[str, str], VersionRecord]:
         """The registered role versions and their status (the Auditor's set, M9)."""
+        assert self.registry is not None  # assemble() always wires the registry
         return self.registry.records()
 
-    def version_stats(self):
+    def version_stats(self) -> dict[str, VersionStat]:
         """Per-version field scorecard (runs / pass / return / mean cost)."""
         return version_stats(self.store.all_events())
 
-    def audit(self):
+    def audit(self) -> dict:
         """Run the Auditor: rate every version, emit audit records, and return the ratings (M9b).
         Read + report only — it never suspends or modifies anything (that is 9c)."""
+        assert self.auditor is not None  # assemble() always wires the Auditor
         return self.auditor.report()
 
-    def enforce(self, now=None):
+    def enforce(self, now: datetime | None = None) -> BreakerResult:
         """Run the Auditor's suspend-and-escalate breaker (M9c): suspend versions rated dangerous
         (rate-limited), open the SLA for a critical suspension, and escalate a stuck one. Returns the
         BreakerResult. It never reinstates."""
+        assert self.auditor is not None  # assemble() always wires the Auditor
         return self.auditor.enforce(now)

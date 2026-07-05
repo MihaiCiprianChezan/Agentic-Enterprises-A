@@ -31,6 +31,7 @@ _AUTONOMY = {"L0": 0, "L1": 1, "L2": 2, "L3": 3}
 class PromotionProposal:
     """A proposed raise of one action class's ceiling, surfaced by Observability/Auditor
     (Art. 8.4). It is only a proposal until the Board ratifies it."""
+
     action_class: str
     from_level: Level
     to_level: Level
@@ -48,8 +49,9 @@ class AutonomyBoard:
     authorized Board member identities (the constitution's Art. 8.2 decision rule) and the
     durable store that carries the Board-acts trail."""
 
-    def __init__(self, *, members: set[str], store: Any,
-                 registry: dict[str, Level] = ACTION_CLASS_REGISTRY) -> None:
+    def __init__(
+        self, *, members: set[str], store: Any, registry: dict[str, Level] = ACTION_CLASS_REGISTRY
+    ) -> None:
         self._members = set(members)
         self._store = store
         # The cell's CURRENT ceilings (a frozen snapshot) — proposals and ratification are
@@ -60,17 +62,30 @@ class AutonomyBoard:
     def _level_of(self, action_class: str) -> Level:
         return self._registry.get(action_class, NOVEL_LEVEL)
 
-    def propose(self, action_class: str, to_level: Level, evidence: str,
-                proposed_by: ActorRef) -> PromotionProposal:
+    def propose(
+        self, action_class: str, to_level: Level, evidence: str, proposed_by: ActorRef
+    ) -> PromotionProposal:
         """Surface a promotion proposal (Art. 8.4). Recorded on the Board trail, but it changes
         nothing — only `ratify` applies it."""
         proposal = PromotionProposal(
-            action_class=action_class, from_level=self._level_of(action_class),
-            to_level=to_level, evidence=evidence, proposed_by=proposed_by)
-        self._store.append(BOARD_TRAIL, "decision", proposed_by, {
-            "stage": "promotion_proposal", "action_class": action_class,
-            "from": proposal.from_level, "to": to_level, "evidence": evidence,
-        })
+            action_class=action_class,
+            from_level=self._level_of(action_class),
+            to_level=to_level,
+            evidence=evidence,
+            proposed_by=proposed_by,
+        )
+        self._store.append(
+            BOARD_TRAIL,
+            "decision",
+            proposed_by,
+            {
+                "stage": "promotion_proposal",
+                "action_class": action_class,
+                "from": proposal.from_level,
+                "to": to_level,
+                "evidence": evidence,
+            },
+        )
         return proposal
 
     def ratify(self, proposal: PromotionProposal, ratifier: ActorRef) -> dict[str, Level]:
@@ -82,29 +97,48 @@ class AutonomyBoard:
             self._block(ratifier, proposal, "only the Board may ratify an amendment (Art. 8.2)")
             raise AmendmentRefused("only the Board may ratify an autonomy amendment (Art. 8.2)")
         if not proposal.evidence:
-            self._block(ratifier, proposal, "a promotion must be earned on observed evidence (Art. 8.4)")
+            self._block(
+                ratifier, proposal, "a promotion must be earned on observed evidence (Art. 8.4)"
+            )
             raise AmendmentRefused("a promotion must be earned on observed evidence (Art. 8.4)")
 
         current = self._level_of(proposal.action_class)
         if proposal.from_level != current:
-            self._block(ratifier, proposal,
-                        f"stale proposal: from_level {proposal.from_level} != current ceiling {current}")
+            self._block(
+                ratifier,
+                proposal,
+                f"stale proposal: from_level {proposal.from_level} != current ceiling {current}",
+            )
             raise AmendmentRefused(
-                f"stale proposal: from_level {proposal.from_level} does not match current {current}")
+                f"stale proposal: from_level {proposal.from_level} does not match current {current}"
+            )
         if _AUTONOMY[proposal.to_level] <= _AUTONOMY[current]:
-            self._block(ratifier, proposal,
-                        f"not a graduation: {current} -> {proposal.to_level} does not raise autonomy")
+            self._block(
+                ratifier,
+                proposal,
+                f"not a graduation: {current} -> {proposal.to_level} does not raise autonomy",
+            )
             raise AmendmentRefused(
-                f"not a graduation: {current} -> {proposal.to_level} does not raise autonomy")
+                f"not a graduation: {current} -> {proposal.to_level} does not raise autonomy"
+            )
 
         amended = dict(self._registry)
         amended[proposal.action_class] = proposal.to_level
         # The amendment itself is a governed, audited artifact on the Board-acts trail.
-        self._store.append(BOARD_TRAIL, "governance", ratifier, {
-            "stage": "amendment", "decision": "ratified", "clause": "Art. 8.3",
-            "action_class": proposal.action_class, "from": proposal.from_level,
-            "to": proposal.to_level, "evidence": proposal.evidence,
-        })
+        self._store.append(
+            BOARD_TRAIL,
+            "governance",
+            ratifier,
+            {
+                "stage": "amendment",
+                "decision": "ratified",
+                "clause": "Art. 8.3",
+                "action_class": proposal.action_class,
+                "from": proposal.from_level,
+                "to": proposal.to_level,
+                "evidence": proposal.evidence,
+            },
+        )
         return amended
 
     def ratify_amendment(self, article: str, content: dict, ratifier: ActorRef) -> dict:
@@ -114,23 +148,55 @@ class AutonomyBoard:
         logged on the Board-acts trail (Art. 8.3); a non-Board ratifier is refused and the refusal
         recorded (invariant #10)."""
         if not self._is_board(ratifier):
-            self._store.append(BOARD_TRAIL, "governance", ratifier, {
-                "stage": "amendment", "decision": "block", "clause": "Art. 8.2",
-                "article": article, "reason": "only the Board may ratify an amendment (Art. 8.2)"})
-            raise AmendmentRefused("only the Board may ratify a constitutional amendment (Art. 8.2)")
+            self._store.append(
+                BOARD_TRAIL,
+                "governance",
+                ratifier,
+                {
+                    "stage": "amendment",
+                    "decision": "block",
+                    "clause": "Art. 8.2",
+                    "article": article,
+                    "reason": "only the Board may ratify an amendment (Art. 8.2)",
+                },
+            )
+            raise AmendmentRefused(
+                "only the Board may ratify a constitutional amendment (Art. 8.2)"
+            )
         # Deep-copy so a later mutation of the caller's dict cannot alter the recorded act (the
         # payload is re-hashed by verify_chain — a shared reference would break tamper-evidence).
-        self._store.append(BOARD_TRAIL, "governance", ratifier, {
-            "stage": "amendment", "decision": "ratified", "clause": "Art. 8.3",
-            "article": article, "content": copy.deepcopy(content)})
-        return content   # the stored record is an independent deep copy; the caller keeps its own dict
+        self._store.append(
+            BOARD_TRAIL,
+            "governance",
+            ratifier,
+            {
+                "stage": "amendment",
+                "decision": "ratified",
+                "clause": "Art. 8.3",
+                "article": article,
+                "content": copy.deepcopy(content),
+            },
+        )
+        return (
+            content  # the stored record is an independent deep copy; the caller keeps its own dict
+        )
 
     def _is_board(self, actor: ActorRef) -> bool:
         return getattr(actor, "mode", "agent") == "human" and actor.version in self._members
 
     def _block(self, ratifier: ActorRef, proposal: PromotionProposal, reason: str) -> None:
-        self._store.append(BOARD_TRAIL, "governance", ratifier, {
-            "stage": "amendment", "decision": "block", "clause": "Art. 8",
-            "action_class": proposal.action_class, "from": proposal.from_level,
-            "to": proposal.to_level, "evidence": proposal.evidence, "reason": reason,
-        })
+        self._store.append(
+            BOARD_TRAIL,
+            "governance",
+            ratifier,
+            {
+                "stage": "amendment",
+                "decision": "block",
+                "clause": "Art. 8",
+                "action_class": proposal.action_class,
+                "from": proposal.from_level,
+                "to": proposal.to_level,
+                "evidence": proposal.evidence,
+                "reason": reason,
+            },
+        )

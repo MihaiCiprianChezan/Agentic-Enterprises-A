@@ -18,24 +18,28 @@ from cell.domain.objects import Goal, Output, Ticket, Verdict, WorkItem
 @runtime_checkable
 class Director(Protocol):
     """Direction — turns a Ticket into a specified Goal under the constitution."""
+
     def specify(self, ticket: Ticket) -> Goal: ...
 
 
 @runtime_checkable
 class Orchestrator(Protocol):
     """Orchestration — decomposes a Goal into sequenced WorkItems with breakpoints."""
+
     def decompose(self, goal: Goal) -> list[WorkItem]: ...
 
 
 @runtime_checkable
 class Executor(Protocol):
     """Execution — produces the Output for a single WorkItem, within its authority class."""
+
     def execute(self, item: WorkItem) -> Output: ...
 
 
 @runtime_checkable
 class Verifier(Protocol):
     """Verification — independently scores an Output. R5: verified_by != produced_by."""
+
     def verify(self, output: Output, goal: Goal) -> Verdict: ...
 
 
@@ -43,5 +47,6 @@ class Verifier(Protocol):
 class Steward(Protocol):
     """System role — watches health; may quarantine/rollback. ZERO business authority.
     Maintains live instances; does NOT permanently replace an implementer (that is the Board)."""
+
     def quarantine(self, flow_id: str, reason: str) -> None: ...
     def rollback(self, flow_id: str, to_seq: int) -> None: ...

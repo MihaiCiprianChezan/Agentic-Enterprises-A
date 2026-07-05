@@ -8,7 +8,7 @@ capture the data so the run is replayable.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -24,12 +24,13 @@ from cell.planes.observability import (
 )
 from cell.roles.reference import RefDirector, RefExecutor, RefOrchestrator, RefVerifier
 
-_T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+_T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def _ticket(tid: str = "t1") -> Ticket:
-    return Ticket(id=tid, source="legacy", title="Add feature X",
-                  body="Please add feature X", received_at=_T0)
+    return Ticket(
+        id=tid, source="legacy", title="Add feature X", body="Please add feature X", received_at=_T0
+    )
 
 
 _COSTS = {
@@ -46,13 +47,22 @@ def _cost_model(stage: str) -> CostDelta:
 
 def _run(recorder=None, cost_model=None, executor=None, verifier=None, flow_id="f1"):
     store = InMemoryEventStore()
-    verdict = run_flow(_ticket(), RefDirector(), RefOrchestrator(),
-                       executor or RefExecutor(), verifier or RefVerifier(), store, flow_id,
-                       recorder=recorder, cost_model=cost_model)
+    verdict = run_flow(
+        _ticket(),
+        RefDirector(),
+        RefOrchestrator(),
+        executor or RefExecutor(),
+        verifier or RefVerifier(),
+        store,
+        flow_id,
+        recorder=recorder,
+        cost_model=cost_model,
+    )
     return store, verdict
 
 
 # --- a span per step ---------------------------------------------------------
+
 
 def test_a_span_is_recorded_for_every_step():
     rec = InMemoryTraceStore()
@@ -75,6 +85,7 @@ def test_each_span_has_timing_and_digests():
 
 # --- cost attribution (Rule C1) ----------------------------------------------
 
+
 def test_cost_is_attributed_per_step_and_summed_on_spans():
     rec = InMemoryTraceStore()
     _run(recorder=rec, cost_model=_cost_model)
@@ -91,9 +102,12 @@ def test_total_cost_sums_all_fields():
     class R:
         def __init__(self, cost):
             self.cost = cost
-    items = [R(CostDelta(compute=10, wall_clock_ms=100)),
-             R(CostDelta(compute=5, wall_clock_ms=50, human_time_ms=30)),
-             R(None)]
+
+    items = [
+        R(CostDelta(compute=10, wall_clock_ms=100)),
+        R(CostDelta(compute=5, wall_clock_ms=50, human_time_ms=30)),
+        R(None),
+    ]
     t = total_cost(items)
     assert t.compute == 15
     assert t.wall_clock_ms == 150
@@ -101,6 +115,7 @@ def test_total_cost_sums_all_fields():
 
 
 # --- error capture -----------------------------------------------------------
+
 
 def test_a_failing_step_is_recorded_with_error_status():
     class BoomExecutor:
@@ -118,6 +133,7 @@ def test_a_failing_step_is_recorded_with_error_status():
 
 # --- replay (the acceptance) -------------------------------------------------
 
+
 def test_replay_reads_the_full_ordered_cost_trace():
     rec = InMemoryTraceStore()
     _run(recorder=rec, cost_model=_cost_model)
@@ -128,6 +144,7 @@ def test_replay_reads_the_full_ordered_cost_trace():
 
 # --- the plane is optional (M2 back-compat) ----------------------------------
 
+
 def test_observability_is_optional():
     store, verdict = _run()  # no recorder, no cost model
     assert verdict.decision == "pass"
@@ -135,6 +152,7 @@ def test_observability_is_optional():
 
 
 # --- review fixes: contract-typed store, unit safety -------------------------
+
 
 def test_trace_store_is_swappable():
     # Depend on the contract, not the implementer (invariant #1): any store satisfying the
@@ -154,8 +172,17 @@ def test_trace_store_is_swappable():
 
     alt = ListTraceStore()
     store = InMemoryEventStore()
-    run_flow(_ticket(), RefDirector(), RefOrchestrator(), RefExecutor(), RefVerifier(),
-             store, "f1", recorder=alt, cost_model=_cost_model)
+    run_flow(
+        _ticket(),
+        RefDirector(),
+        RefOrchestrator(),
+        RefExecutor(),
+        RefVerifier(),
+        store,
+        "f1",
+        recorder=alt,
+        cost_model=_cost_model,
+    )
     assert {s.step for s in alt.spans("f1")} == {"specify", "decompose", "execute", "verify"}
 
 
@@ -170,6 +197,7 @@ def test_total_cost_rejects_mixed_units():
 
 
 # --- digest helper -----------------------------------------------------------
+
 
 def test_digest_is_stable_and_distinguishing():
     assert digest("abc") == digest("abc")

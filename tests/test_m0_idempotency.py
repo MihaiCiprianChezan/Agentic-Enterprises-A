@@ -15,14 +15,15 @@ from cell.domain.objects import ActorRef
 from cell.effects.wrapper import (
     ActionDescriptor,
     InMemoryEffectsLedger,
+    IrreversibleInFlight,
     make_idempotency_key,
     perform,
 )
 from cell.planes.governance import PermissiveGovernance
 from cell.planes.memory import InMemoryEventStore
 
-
 # --- event store: append-only + tamper-evident chain (Build-Spec §2.1) -------
+
 
 def test_event_chain_is_consistent():
     store = InMemoryEventStore()
@@ -52,6 +53,7 @@ def test_idempotency_key_is_deterministic():
 
 # --- the idempotency wrapper: exactly-once across resume (Build-Spec §4) ------
 
+
 def test_completed_effect_is_not_refired():
     """The core M0 guarantee: a second perform() with the same key returns the prior
     result and does NOT execute again."""
@@ -66,8 +68,11 @@ def test_completed_effect_is_not_refired():
 
     key = make_idempotency_key("flow1", "open_pr", {"branch": "x"})
     action = ActionDescriptor(
-        id="a1", action_class="CLASS_VISIBLE_OUTPUT", effect_kind="compensable",
-        idempotency_key=key, intent={"branch": "x"},
+        id="a1",
+        action_class="CLASS_VISIBLE_OUTPUT",
+        effect_kind="compensable",
+        idempotency_key=key,
+        intent={"branch": "x"},
     )
 
     r1 = perform(action, actor, execute, ledger, gov)
@@ -92,10 +97,13 @@ def test_irreversible_effect_is_at_most_once():
         return "sent"
 
     action = ActionDescriptor(
-        id="a2", action_class="CLASS_EXTERNAL_COMM", effect_kind="irreversible",
-        idempotency_key=key, intent={"to": "client"},
+        id="a2",
+        action_class="CLASS_EXTERNAL_COMM",
+        effect_kind="irreversible",
+        idempotency_key=key,
+        intent={"to": "client"},
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(IrreversibleInFlight):
         perform(action, actor, execute, ledger, gov)
     assert calls["n"] == 0  # at-most-once: never re-executed

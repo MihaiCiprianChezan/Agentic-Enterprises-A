@@ -13,7 +13,7 @@ Acceptance (§5):
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -21,15 +21,16 @@ from cell.domain.objects import ActorRef, Ticket, WorkItem
 from cell.effects.wrapper import InMemoryEffectsLedger, make_idempotency_key
 from cell.handbrake import Briefing, CellHandbrake, InjectionRefused, Paused
 from cell.planes.memory import InMemoryEventStore
-from cell.planes.observability import InMemoryTraceStore, total_cost
+from cell.planes.observability import InMemoryTraceStore
 from cell.roles.reference import EXECUTOR, RefDirector, RefExecutor, RefVerifier
 
-_T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+_T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def _ticket(tid: str = "t1") -> Ticket:
-    return Ticket(id=tid, source="legacy", title="Add feature X",
-                  body="Please add feature X", received_at=_T0)
+    return Ticket(
+        id=tid, source="legacy", title="Add feature X", body="Please add feature X", received_at=_T0
+    )
 
 
 class L1Orchestrator:
@@ -38,22 +39,32 @@ class L1Orchestrator:
     actor = ActorRef(role="Orchestrator", version="l1-orch")
 
     def decompose(self, goal):
-        return [WorkItem(
-            id=f"wi-{goal.id}", goal_id=goal.id, description="Comment on the issue",
-            assigned_to=EXECUTOR, action_class="CLASS_EXTERNAL_COMM", authority_level="L1",
-            acceptance_criteria=list(goal.acceptance_criteria),
-        )]
+        return [
+            WorkItem(
+                id=f"wi-{goal.id}",
+                goal_id=goal.id,
+                description="Comment on the issue",
+                assigned_to=EXECUTOR,
+                action_class="CLASS_EXTERNAL_COMM",
+                authority_level="L1",
+                acceptance_criteria=list(goal.acceptance_criteria),
+            )
+        ]
 
 
 def _handbrake(**kw):
     return CellHandbrake(
-        director=RefDirector(), orchestrator=L1Orchestrator(),
-        executor=kw.pop("executor", RefExecutor()), verifier=RefVerifier(),
-        store=kw.pop("store", InMemoryEventStore()), **kw,
+        director=RefDirector(),
+        orchestrator=L1Orchestrator(),
+        executor=kw.pop("executor", RefExecutor()),
+        verifier=RefVerifier(),
+        store=kw.pop("store", InMemoryEventStore()),
+        **kw,
     )
 
 
 # --- breakpoint: an L1 action pauses the flow --------------------------------
+
 
 def test_flow_pauses_at_the_l1_breakpoint():
     hb = _handbrake()
@@ -65,14 +76,21 @@ def test_flow_pauses_at_the_l1_breakpoint():
 def test_an_l2_flow_does_not_pause():
     # The reference orchestrator yields an L2 item -> no static breakpoint -> runs through.
     from cell.roles.reference import RefOrchestrator
-    hb = CellHandbrake(director=RefDirector(), orchestrator=RefOrchestrator(),
-                       executor=RefExecutor(), verifier=RefVerifier(), store=InMemoryEventStore())
+
+    hb = CellHandbrake(
+        director=RefDirector(),
+        orchestrator=RefOrchestrator(),
+        executor=RefExecutor(),
+        verifier=RefVerifier(),
+        store=InMemoryEventStore(),
+    )
     result = hb.start(_ticket(), "f1")
     assert not isinstance(result, Paused)
     assert result.decision == "pass"
 
 
 # --- inspect: a legible briefing ---------------------------------------------
+
 
 def test_inspect_returns_a_legible_briefing():
     store = InMemoryEventStore()
@@ -92,14 +110,18 @@ def test_inspect_returns_a_legible_briefing():
 
 # --- inject + resume: the resumed run uses the injection ----------------------
 
+
 def test_inject_corrected_output_then_resume_uses_it():
     store = InMemoryEventStore()
     hb = _handbrake(store=store)
     hb.start(_ticket(), "f1")
 
     human = ActorRef(role="Executor", version="human:alice", mode="human")
-    hb.inject("f1", {"type": "edited_output", "output_id": "corrected",
-                     "artifact_ref": "branch://corrected"}, human)
+    hb.inject(
+        "f1",
+        {"type": "edited_output", "output_id": "corrected", "artifact_ref": "branch://corrected"},
+        human,
+    )
     verdict = hb.resume("f1")
 
     assert not isinstance(verdict, Paused)
@@ -123,6 +145,7 @@ def test_plain_approve_resume_runs_the_agent():
 
 # --- R11: an out-of-authority injection is refused and logged ----------------
 
+
 def test_injection_above_the_seat_authority_is_refused_and_logged():
     store = InMemoryEventStore()
     hb = _handbrake(store=store)
@@ -138,6 +161,7 @@ def test_injection_above_the_seat_authority_is_refused_and_logged():
 
 
 # --- resume is exactly-once on the external effect ---------------------------
+
 
 def test_resume_does_not_refire_a_completed_effect():
     store = InMemoryEventStore()
@@ -165,6 +189,7 @@ def test_resume_does_not_refire_a_completed_effect():
 
 # --- replay: read-only reconstruction ----------------------------------------
 
+
 def test_replay_reconstructs_without_refiring():
     store = InMemoryEventStore()
     calls = {"effect": 0}
@@ -190,11 +215,18 @@ def test_replay_reconstructs_without_refiring():
 
 # --- review fixes -----------------------------------------------------------
 
+
 def test_ad_hoc_breakpoint_pauses_an_otherwise_l2_flow():
     from cell.roles.reference import RefOrchestrator
+
     store = InMemoryEventStore()
-    hb = CellHandbrake(director=RefDirector(), orchestrator=RefOrchestrator(),
-                       executor=RefExecutor(), verifier=RefVerifier(), store=store)
+    hb = CellHandbrake(
+        director=RefDirector(),
+        orchestrator=RefOrchestrator(),
+        executor=RefExecutor(),
+        verifier=RefVerifier(),
+        store=store,
+    )
     bp_id = hb.set_breakpoint("f1", "pre-execute", "static")
     assert [b["id"] for b in hb.list_breakpoints("f1")] == [bp_id]
 
@@ -248,29 +280,47 @@ def test_resume_records_the_effect_audit_event_before_completion():
 def test_a_fresh_controller_resumes_from_the_durable_plane():
     store = InMemoryEventStore()
     ledger = InMemoryEffectsLedger()
-    CellHandbrake(director=RefDirector(), orchestrator=L1Orchestrator(),
-                  executor=RefExecutor(), verifier=RefVerifier(),
-                  store=store, ledger=ledger).start(_ticket(), "f1")
+    CellHandbrake(
+        director=RefDirector(),
+        orchestrator=L1Orchestrator(),
+        executor=RefExecutor(),
+        verifier=RefVerifier(),
+        store=store,
+        ledger=ledger,
+    ).start(_ticket(), "f1")
 
     # A new controller sharing the same durable plane resumes from the checkpoint.
-    fresh = CellHandbrake(director=RefDirector(), orchestrator=L1Orchestrator(),
-                          executor=RefExecutor(), verifier=RefVerifier(),
-                          store=store, ledger=ledger)
+    fresh = CellHandbrake(
+        director=RefDirector(),
+        orchestrator=L1Orchestrator(),
+        executor=RefExecutor(),
+        verifier=RefVerifier(),
+        store=store,
+        ledger=ledger,
+    )
     verdict = fresh.resume("f1")
     assert verdict.decision == "pass"
 
 
 def test_governance_gate_blocks_an_l0_work_item_up_front():
-    from cell.planes.governance import RuleSetGovernance
     from cell.effects.wrapper import GovernanceBlocked
+    from cell.planes.governance import RuleSetGovernance
 
     class L0Orchestrator:
         actor = ActorRef(role="Orchestrator", version="l0")
 
         def decompose(self, goal):
-            return [WorkItem(id=f"wi-{goal.id}", goal_id=goal.id, description="push",
-                             assigned_to=EXECUTOR, action_class="CLASS_HIGH_BLAST",
-                             authority_level="L0", acceptance_criteria=list(goal.acceptance_criteria))]
+            return [
+                WorkItem(
+                    id=f"wi-{goal.id}",
+                    goal_id=goal.id,
+                    description="push",
+                    assigned_to=EXECUTOR,
+                    action_class="CLASS_HIGH_BLAST",
+                    authority_level="L0",
+                    acceptance_criteria=list(goal.acceptance_criteria),
+                )
+            ]
 
     calls = {"n": 0}
 
@@ -282,9 +332,14 @@ def test_governance_gate_blocks_an_l0_work_item_up_front():
             return RefExecutor().execute(item)
 
     store = InMemoryEventStore()
-    hb = CellHandbrake(director=RefDirector(), orchestrator=L0Orchestrator(),
-                       executor=CountingExecutor(), verifier=RefVerifier(), store=store,
-                       governance=RuleSetGovernance())
+    hb = CellHandbrake(
+        director=RefDirector(),
+        orchestrator=L0Orchestrator(),
+        executor=CountingExecutor(),
+        verifier=RefVerifier(),
+        store=store,
+        governance=RuleSetGovernance(),
+    )
     with pytest.raises(GovernanceBlocked):
         hb.start(_ticket(), "f1")
     assert calls["n"] == 0  # never executed
@@ -296,10 +351,16 @@ def test_governance_gate_blocks_an_l0_work_item_up_front():
 def test_governance_gate_allows_and_logs_an_l2_work_item():
     from cell.planes.governance import RuleSetGovernance
     from cell.roles.reference import RefOrchestrator
+
     store = InMemoryEventStore()
-    hb = CellHandbrake(director=RefDirector(), orchestrator=RefOrchestrator(),
-                       executor=RefExecutor(), verifier=RefVerifier(), store=store,
-                       governance=RuleSetGovernance())
+    hb = CellHandbrake(
+        director=RefDirector(),
+        orchestrator=RefOrchestrator(),
+        executor=RefExecutor(),
+        verifier=RefVerifier(),
+        store=store,
+        governance=RuleSetGovernance(),
+    )
     verdict = hb.start(_ticket(), "f1")
     assert verdict.decision == "pass"
     gate = [e for e in store.read("f1") if e.payload.get("stage") == "gate"]
@@ -327,19 +388,31 @@ def test_do_item_revises_up_to_max_revisions_on_return():
         actor = ActorRef(role="Verifier", version="ref-v0")
 
         def verify(self, output, goal):
-            return Verdict(id=f"v-{output.id}", output_id=output.id, decision="return",
-                           scores=[CriterionScore(criterion_id="c", result="unclear")],
-                           reason="revise", verified_by=self.actor, verified_at=_T0)
+            return Verdict(
+                id=f"v-{output.id}",
+                output_id=output.id,
+                decision="return",
+                scores=[CriterionScore(criterion_id="c", result="unclear")],
+                reason="revise",
+                verified_by=self.actor,
+                verified_at=_T0,
+            )
 
-    hb = CellHandbrake(director=RefDirector(), orchestrator=RefOrchestrator(),
-                       executor=CountingExecutor(), verifier=ReturnVerifier(),
-                       store=store, max_revisions=3)
+    hb = CellHandbrake(
+        director=RefDirector(),
+        orchestrator=RefOrchestrator(),
+        executor=CountingExecutor(),
+        verifier=ReturnVerifier(),
+        store=store,
+        max_revisions=3,
+    )
     verdict = hb.start(_ticket(), "f1")
     assert verdict.decision == "return"
     assert calls["n"] == 4  # initial attempt + 3 revisions
 
 
 # --- pr8 augment fixes -------------------------------------------------------
+
 
 def test_breakpoint_uses_the_registry_level_not_the_declared_one():
     # A divergent orchestrator: an L1 action_class but a declared L3 authority_level must
@@ -350,15 +423,27 @@ def test_breakpoint_uses_the_registry_level_not_the_declared_one():
         actor = ActorRef(role="Orchestrator", version="divergent")
 
         def decompose(self, goal):
-            return [WorkItem(id=f"wi-{goal.id}", goal_id=goal.id, description="comment",
-                             assigned_to=EXECUTOR, action_class="CLASS_EXTERNAL_COMM",  # L1 in registry
-                             authority_level="L3",  # falsely claims fully-autonomous
-                             acceptance_criteria=list(goal.acceptance_criteria))]
+            return [
+                WorkItem(
+                    id=f"wi-{goal.id}",
+                    goal_id=goal.id,
+                    description="comment",
+                    assigned_to=EXECUTOR,
+                    action_class="CLASS_EXTERNAL_COMM",  # L1 in registry
+                    authority_level="L3",  # falsely claims fully-autonomous
+                    acceptance_criteria=list(goal.acceptance_criteria),
+                )
+            ]
 
     store = InMemoryEventStore()
-    hb = CellHandbrake(director=RefDirector(), orchestrator=DivergentOrchestrator(),
-                       executor=RefExecutor(), verifier=RefVerifier(), store=store,
-                       governance=RuleSetGovernance())
+    hb = CellHandbrake(
+        director=RefDirector(),
+        orchestrator=DivergentOrchestrator(),
+        executor=RefExecutor(),
+        verifier=RefVerifier(),
+        store=store,
+        governance=RuleSetGovernance(),
+    )
     result = hb.start(_ticket(), "f1")
     assert isinstance(result, Paused)  # registry says L1 -> static breakpoint, not bypassed
 
@@ -377,18 +462,30 @@ def test_resume_returns_the_latest_verdict_not_a_stale_one():
         def verify(self, output, goal):
             self.n += 1
             decision = "return" if self.n == 1 else "pass"
-            return Verdict(id=f"v{self.n}-{output.id}", output_id=output.id, decision=decision,
-                           scores=[CriterionScore(criterion_id="c", result="met")],
-                           reason="x", verified_by=self.actor, verified_at=_T0)
+            return Verdict(
+                id=f"v{self.n}-{output.id}",
+                output_id=output.id,
+                decision=decision,
+                scores=[CriterionScore(criterion_id="c", result="met")],
+                reason="x",
+                verified_by=self.actor,
+                verified_at=_T0,
+            )
 
     store = InMemoryEventStore()
-    hb = CellHandbrake(director=RefDirector(), orchestrator=L1Orchestrator(),
-                       executor=RefExecutor(), verifier=FlakyVerifier(),
-                       store=store)  # L1Orchestrator -> pauses
+    hb = CellHandbrake(
+        director=RefDirector(),
+        orchestrator=L1Orchestrator(),
+        executor=RefExecutor(),
+        verifier=FlakyVerifier(),
+        store=store,
+    )  # L1Orchestrator -> pauses
     hb.start(_ticket(), "f1")
     v1 = hb.resume("f1")  # loop: return then pass -> final pass (two verify events)
     assert v1.decision == "pass"
-    v2 = hb.resume("f1")  # re-resume: guard must return the LATEST verdict (pass), not the first (return)
+    v2 = hb.resume(
+        "f1"
+    )  # re-resume: guard must return the LATEST verdict (pass), not the first (return)
     assert v2.decision == "pass"
 
 
@@ -415,19 +512,31 @@ def test_resume_after_a_crash_between_execute_and_verify_does_not_rerun_the_exec
 
     # L1 flow: start pauses; the first resume runs the executor + writes the marker, then verify
     # crashes — leaving an execute marker with no verdict.
-    CellHandbrake(director=RefDirector(), orchestrator=L1Orchestrator(),
-                  executor=CountingExecutor(), verifier=CrashingVerifier(),
-                  store=store).start(_ticket(), "f1")
+    CellHandbrake(
+        director=RefDirector(),
+        orchestrator=L1Orchestrator(),
+        executor=CountingExecutor(),
+        verifier=CrashingVerifier(),
+        store=store,
+    ).start(_ticket(), "f1")
     with pytest.raises(RuntimeError):
-        CellHandbrake(director=RefDirector(), orchestrator=L1Orchestrator(),
-                      executor=CountingExecutor(), verifier=CrashingVerifier(),
-                      store=store).resume("f1")
+        CellHandbrake(
+            director=RefDirector(),
+            orchestrator=L1Orchestrator(),
+            executor=CountingExecutor(),
+            verifier=CrashingVerifier(),
+            store=store,
+        ).resume("f1")
     assert calls["n"] == 1  # executor ran once; the marker is on the durable trail
 
     # A fresh controller resumes with a healthy verifier — it must NOT re-run the executor.
-    verdict = CellHandbrake(director=RefDirector(), orchestrator=L1Orchestrator(),
-                            executor=CountingExecutor(), verifier=RefVerifier(),
-                            store=store).resume("f1")
+    verdict = CellHandbrake(
+        director=RefDirector(),
+        orchestrator=L1Orchestrator(),
+        executor=CountingExecutor(),
+        verifier=RefVerifier(),
+        store=store,
+    ).resume("f1")
     assert verdict.decision == "pass"
     assert calls["n"] == 1  # the Output was reconstructed from the durable marker, not re-produced
 
@@ -444,9 +553,18 @@ def test_resume_still_performs_the_work_item_effect_when_only_the_marker_was_wri
     # Simulate a crash that wrote ONLY the execute marker (no perform completion, no verdict):
     item_id = paused.pending_action["work_item_id"]
     out_id = f"out-{item_id}"
-    store.append("f1", "action", EXECUTOR,
-                 {"stage": "execute", "output_id": out_id, "work_item_id": item_id,
-                  "artifact_ref": f"branch://{item_id}", "attempt": 0})
+    store.append(
+        "f1",
+        "action",
+        EXECUTOR,
+        {
+            "stage": "execute",
+            "output_id": out_id,
+            "work_item_id": item_id,
+            "artifact_ref": f"branch://{item_id}",
+            "attempt": 0,
+        },
+    )
 
     key = make_idempotency_key("f1", f"execute:{item_id}", {"output_id": out_id})
     assert ledger.get(key) is None  # the effect was not performed before the crash

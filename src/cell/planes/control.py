@@ -13,7 +13,9 @@ from typing import Any, Protocol
 class Handbrake(Protocol):
     """The five primitives (Handbrake §1). Present on EVERY flow (invariant #3)."""
 
-    def set_breakpoint(self, flow_id: str, step: str, kind: str, condition: str | None = None) -> str: ...
+    def set_breakpoint(
+        self, flow_id: str, step: str, kind: str, condition: str | None = None
+    ) -> str: ...
     def inspect(self, flow_id: str) -> dict[str, Any]:
         """Returns a takeover BRIEFING (Handbrake §2), not raw state: where/why it paused,
         the pending action + authority class, recent decision trail (with rationale),

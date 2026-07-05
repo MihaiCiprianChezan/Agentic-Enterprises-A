@@ -13,10 +13,11 @@ durable/OTel backend implements the same surface without changing callers (invar
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
-from typing import Any, Callable, Iterable, Iterator, Literal, Optional, Protocol, runtime_checkable
+from datetime import UTC, datetime
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from cell.domain.objects import ActorRef
 from cell.planes.memory import CostDelta
@@ -28,6 +29,7 @@ SpanStatus = Literal["ok", "error", "paused"]
 @dataclass
 class TraceSpan:
     """Build-Spec §3.1 — one step's trajectory with its attributable cost."""
+
     flow_id: str
     step: str
     actor: ActorRef
@@ -38,7 +40,7 @@ class TraceSpan:
     started_at: datetime
     ended_at: datetime
     status: SpanStatus = "ok"
-    parent_span: Optional[str] = None
+    parent_span: str | None = None
 
 
 @runtime_checkable
@@ -77,8 +79,8 @@ def total_cost(records: Iterable[Any]) -> CostDelta:
     returning an ambiguous total."""
     compute = 0.0
     wall_clock_ms = 0
-    human_time_ms: Optional[int] = None
-    units: Optional[str] = None
+    human_time_ms: int | None = None
+    units: str | None = None
     for record in records:
         cost = getattr(record, "cost", None)
         if cost is None:
@@ -91,8 +93,12 @@ def total_cost(records: Iterable[Any]) -> CostDelta:
         wall_clock_ms += cost.wall_clock_ms
         if cost.human_time_ms is not None:
             human_time_ms = (human_time_ms or 0) + cost.human_time_ms
-    return CostDelta(compute=compute, wall_clock_ms=wall_clock_ms,
-                     human_time_ms=human_time_ms, units=units or "tokens")
+    return CostDelta(
+        compute=compute,
+        wall_clock_ms=wall_clock_ms,
+        human_time_ms=human_time_ms,
+        units=units or "tokens",
+    )
 
 
 CostModel = Callable[[str], CostDelta]
@@ -104,15 +110,16 @@ def _zero_cost(_step: str) -> CostDelta:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass
 class SpanHandle:
     """Mutable handle yielded inside a span so the caller can set the output digest (and,
     if it wants, override the cost) once the step's result is known."""
+
     output_digest: str = ""
-    cost: Optional[CostDelta] = None
+    cost: CostDelta | None = None
 
 
 class Tracer:
@@ -120,16 +127,22 @@ class Tracer:
     runs the wrapped body, so a flow behaves identically with or without observability wired.
     """
 
-    def __init__(self, store: Optional[TraceStore], flow_id: str,
-                 cost_model: Optional[CostModel] = None, clock: Optional[Clock] = None) -> None:
+    def __init__(
+        self,
+        store: TraceStore | None,
+        flow_id: str,
+        cost_model: CostModel | None = None,
+        clock: Clock | None = None,
+    ) -> None:
         self.store = store
         self.flow_id = flow_id
         self.cost_model = cost_model or _zero_cost
         self.clock = clock or _now
 
     @contextmanager
-    def span(self, step: str, actor: ActorRef, kind: SpanKind, *,
-             input_digest: str = "") -> Iterator[SpanHandle]:
+    def span(
+        self, step: str, actor: ActorRef, kind: SpanKind, *, input_digest: str = ""
+    ) -> Iterator[SpanHandle]:
         started_at = self.clock()
         handle = SpanHandle()
         status: SpanStatus = "ok"
@@ -148,8 +161,17 @@ class Tracer:
             elapsed_ms = max(0, round((ended_at - started_at).total_seconds() * 1000))
             handle.cost = replace(base, wall_clock_ms=elapsed_ms)
             if self.store is not None:
-                self.store.record(TraceSpan(
-                    flow_id=self.flow_id, step=step, actor=actor, kind=kind,
-                    input_digest=input_digest, output_digest=handle.output_digest,
-                    cost=handle.cost, started_at=started_at, ended_at=ended_at, status=status,
-                ))
+                self.store.record(
+                    TraceSpan(
+                        flow_id=self.flow_id,
+                        step=step,
+                        actor=actor,
+                        kind=kind,
+                        input_digest=input_digest,
+                        output_digest=handle.output_digest,
+                        cost=handle.cost,
+                        started_at=started_at,
+                        ended_at=ended_at,
+                        status=status,
+                    )
+                )

@@ -28,17 +28,28 @@ def _board(store) -> AutonomyBoard:
 
 def _action(action_class: str):
     from cell.effects.wrapper import ActionDescriptor
-    return ActionDescriptor(id="a1", action_class=action_class, effect_kind="compensable",
-                            idempotency_key="k1", intent={})
+
+    return ActionDescriptor(
+        id="a1",
+        action_class=action_class,
+        effect_kind="compensable",
+        idempotency_key="k1",
+        intent={},
+    )
 
 
 # --- a proposal is only a proposal -------------------------------------------
 
+
 def test_a_proposal_does_not_change_autonomy():
     store = InMemoryEventStore()
     board = _board(store)
-    proposal = board.propose("CLASS_OWN_WRITE", "L3",
-                             evidence="200 clean L2 writes, zero reverts", proposed_by=OBSERVABILITY)
+    proposal = board.propose(
+        "CLASS_OWN_WRITE",
+        "L3",
+        evidence="200 clean L2 writes, zero reverts",
+        proposed_by=OBSERVABILITY,
+    )
     assert isinstance(proposal, PromotionProposal)
     assert proposal.from_level == "L2" and proposal.to_level == "L3"
     # the registry / governance is unchanged — nothing is promoted yet
@@ -58,10 +69,13 @@ def test_promotion_is_never_automatic():
 
 # --- the Board ratifies -> the amendment applies and is logged ---------------
 
+
 def test_board_ratifies_and_the_promotion_takes_effect():
     store = InMemoryEventStore()
     board = _board(store)
-    proposal = board.propose("CLASS_OWN_WRITE", "L3", evidence="clean run", proposed_by=OBSERVABILITY)
+    proposal = board.propose(
+        "CLASS_OWN_WRITE", "L3", evidence="clean run", proposed_by=OBSERVABILITY
+    )
     amended = board.ratify(proposal, BOARD)
 
     # the re-compiled governance reflects the promotion (L2 act-and-report -> L3 auto)
@@ -75,8 +89,7 @@ def test_the_amendment_is_on_the_board_audit_trail():
     proposal = board.propose("CLASS_OWN_WRITE", "L3", evidence="clean", proposed_by=OBSERVABILITY)
     board.ratify(proposal, BOARD)
 
-    amendments = [e for e in store.read(BOARD_TRAIL)
-                  if e.payload.get("stage") == "amendment"]
+    amendments = [e for e in store.read(BOARD_TRAIL) if e.payload.get("stage") == "amendment"]
     assert amendments
     ev = amendments[-1]
     assert ev.payload["decision"] == "ratified"
@@ -92,11 +105,12 @@ def test_board_acts_are_separate_from_role_acts():
     board = _board(store)
     proposal = board.propose("CLASS_OWN_WRITE", "L3", evidence="clean", proposed_by=OBSERVABILITY)
     board.ratify(proposal, BOARD)
-    assert store.read(BOARD_TRAIL)          # the board trail has the proposal + amendment
-    assert store.read("some-flow") == []    # role flows are untouched
+    assert store.read(BOARD_TRAIL)  # the board trail has the proposal + amendment
+    assert store.read("some-flow") == []  # role flows are untouched
 
 
 # --- only the Board, only on evidence ----------------------------------------
+
 
 def test_a_non_board_actor_cannot_ratify():
     store = InMemoryEventStore()
@@ -111,12 +125,15 @@ def test_a_non_board_actor_cannot_ratify():
 def test_ratification_requires_evidence():
     store = InMemoryEventStore()
     board = _board(store)
-    proposal = PromotionProposal("CLASS_OWN_WRITE", "L2", "L3", evidence="", proposed_by=OBSERVABILITY)
+    proposal = PromotionProposal(
+        "CLASS_OWN_WRITE", "L2", "L3", evidence="", proposed_by=OBSERVABILITY
+    )
     with pytest.raises(AmendmentRefused):
         board.ratify(proposal, BOARD)  # promotion must be earned on observed evidence
 
 
 # --- review fixes: real raises, current-registry consistency, richer blocks --
+
 
 def test_proposal_uses_the_boards_current_registry():
     # If the cell already runs an amended registry, the proposal's from_level reflects it.
@@ -140,7 +157,9 @@ def test_ratify_refuses_a_stale_proposal():
     store = InMemoryEventStore()
     board = _board(store)
     # from_level claims L1 but the current ceiling is L2 -> stale/inconsistent
-    stale = PromotionProposal("CLASS_OWN_WRITE", "L1", "L3", evidence="clean", proposed_by=OBSERVABILITY)
+    stale = PromotionProposal(
+        "CLASS_OWN_WRITE", "L1", "L3", evidence="clean", proposed_by=OBSERVABILITY
+    )
     with pytest.raises(AmendmentRefused):
         board.ratify(stale, BOARD)
 
@@ -148,7 +167,9 @@ def test_ratify_refuses_a_stale_proposal():
 def test_block_event_includes_context():
     store = InMemoryEventStore()
     board = _board(store)
-    proposal = board.propose("CLASS_OWN_WRITE", "L3", evidence="clean run", proposed_by=OBSERVABILITY)
+    proposal = board.propose(
+        "CLASS_OWN_WRITE", "L3", evidence="clean run", proposed_by=OBSERVABILITY
+    )
     with pytest.raises(AmendmentRefused):
         board.ratify(proposal, AGENT)
     block = [e for e in store.read(BOARD_TRAIL) if e.payload.get("decision") == "block"][-1]
