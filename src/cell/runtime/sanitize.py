@@ -23,16 +23,20 @@ class UnsafeIntent(ValueError):
 
 
 def safe_branch(name: object) -> str:
-    """Return `name` iff it is a plain, option-safe git branch name; raise otherwise."""
-    if (
-        not isinstance(name, str)
-        or not _BRANCH_RE.match(name)
-        or ".." in name
-        or "//" in name
-        or name.endswith("/")
-        or name.endswith(".lock")
-    ):
+    """Return `name` iff it is a plain, option-safe git branch name; raise otherwise.
+
+    Checked per slash-separated component (mirroring `git check-ref-format --branch`)
+    so a name cannot pass sanitization only to fail later inside git, mid-effect."""
+    if not isinstance(name, str) or not _BRANCH_RE.match(name) or ".." in name:
         raise UnsafeIntent(f"unsafe branch name: {name!r}")
+    for component in name.split("/"):
+        if (
+            not component  # bans "//" and a trailing "/"
+            or component.startswith(".")
+            or component.endswith(".")
+            or component.endswith(".lock")
+        ):
+            raise UnsafeIntent(f"unsafe branch name: {name!r}")
     return name
 
 
