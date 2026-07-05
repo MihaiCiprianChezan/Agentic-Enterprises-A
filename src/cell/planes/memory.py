@@ -7,6 +7,12 @@ M0 target: a minimal, correct EventStore (append-only + hash chain + checkpoints
 The default backing store for one cell is SQLite or Postgres, one `events` table
 (Component-Selection.md). This module defines the interface and an in-memory reference
 implementation usable by tests; a durable backend implements the same Protocol.
+
+Concurrency model: one cell runs its flows single-threaded — one writer per flow at a
+time (a resumed flow is a NEW writer after the old one died, never a concurrent one).
+The durable store's UNIQUE(flow_id, seq) key is the backstop, not the design: if two
+writers ever race on one flow, the second append fails loudly instead of forking the
+chain. Cross-flow concurrency has no shared mutable state beyond that same key.
 """
 
 from __future__ import annotations
