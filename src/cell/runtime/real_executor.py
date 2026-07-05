@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 
 from cell.domain.objects import ActorRef, Output, WorkItem
 from cell.runtime.runner import Runner
+from cell.runtime.sanitize import safe_branch
 
 EXECUTOR_ACTOR = ActorRef(role="Executor", version="real-cli")
 
@@ -32,7 +33,7 @@ class RealExecutor:
     ) -> None:
         self.runner = runner
         self.checkout_dir = checkout_dir
-        self.branch = branch
+        self.branch = safe_branch(branch)
         self.actor = actor
 
     def execute(self, item: WorkItem) -> Output:
