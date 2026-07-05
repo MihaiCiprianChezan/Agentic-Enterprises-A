@@ -3,7 +3,7 @@ Title: Cell Constitution — Agentic-Enterprises-A (ratified instance)
 Version: 1.0.0
 Date: 27.06.2026
 Status: Board-ratified (M1) · Living document
-Companion to: Agentic-First-Enterprises.md · One-Cell-Build-Plan.md
+Companion to: [Agentic-First-Enterprises](https://github.com/MihaiCiprianChezan/Agentic-First-Enterprises) · One-Cell-Build-Plan.md
 ---
 
 # Cell Constitution

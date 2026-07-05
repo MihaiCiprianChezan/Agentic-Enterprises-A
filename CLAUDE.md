@@ -14,8 +14,8 @@ The full design lives in `docs/` and is the source of truth. Code must conform t
 ## Read the design before coding (in this order)
 
 0. `docs/Anatomy-of-a-Run.md` — the operational overview: one ticket → verified PR, role by role. Start here for the big picture.
-1. `docs/Agentic-First-Enterprises.md` — the model. The 11 design invariants in §1 are non-negotiable.
-   (Pinned v1.5.0 snapshot of the canonical spec repo; spec updates are adopted deliberately, like an amendment.)
+1. The model — https://github.com/MihaiCiprianChezan/Agentic-First-Enterprises (the canonical
+   spec repo). The 11 design invariants in §1 are non-negotiable.
 2. `docs/One-Cell-Build-Plan.md` — the build plan and milestone order (M0–M9).
 3. `docs/Cell-Constitution.md` — the constitution this cell runs under (Articles 1–11).
 4. `docs/Role-Contracts.md` — the seven role contracts (four operating + three system roles).
