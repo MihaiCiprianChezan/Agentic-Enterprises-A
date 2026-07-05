@@ -4,6 +4,12 @@ Version: 1.5.0
 Date: 15.06.2026
 ---
 
+> **Pinned copy.** This is the ratified v1.5.0 snapshot of the canonical model, vendored here
+> because this cell's code and governance rules trace to clauses of *this* text (CLAUDE.md:
+> the docs are authoritative). The canonical, evolving spec lives at
+> <https://github.com/MihaiCiprianChezan/Agentic-First-Enterprises>. A newer spec version is
+> adopted deliberately — reviewed and pinned like an amendment — never implicitly.
+
 # The Agent-Native Enterprise
 
 **A reference operating model for organizations where any role can be filled by a human or an agent, every process is built for agents first, and every flow can be paused, adjusted by a human, and resumed.**
@@ -723,7 +729,7 @@ Readers are encouraged to compare the sources below and judge for themselves.
 
 ---
 
-**A note on intent**
+**Note on intent**
 
 This is offered as *a* model, not *the* model. It does not claim to be the best, the most complete, or free of flaws — only to be coherent, honest, and usable. The field has no shortage of agentic frameworks; what it lacks is a *unified* one — simple enough to follow, small enough to hold in your head, and complete enough to build from — that treats governance, accountability, and human judgment as load-bearing rather than as afterthoughts. That gap is what this sets out to fill.
 
