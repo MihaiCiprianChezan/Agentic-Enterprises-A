@@ -121,10 +121,12 @@ def perform(
       raise GovernanceBlocked      -> no record touched (nothing executed)
       return cached result         -> `completed` (unchanged)
       raise IrreversibleInFlight   -> `in_flight`/`failed` (unchanged; human resolves)
-      execute raises ANY Exception -> `failed` (the broad catch below is deliberate:
-                                      narrowing it would let an unanticipated error
-                                      type skip mark_failed and leave `in_flight`)
-      process dies mid-execute     -> `in_flight` (recovery by effect_kind on resume)
+      execute raises an Exception  -> `failed` (the broad `except Exception` below is
+                                      deliberate: narrowing it would let an unanticipated
+                                      error type skip mark_failed and leave `in_flight`)
+      execute raises a BaseException-only (KeyboardInterrupt/SystemExit), or the
+      process dies mid-execute     -> `in_flight` — treated as a crash, recovery decided
+                                      by effect_kind on resume, same as a kill
       return fresh result          -> `completed`, after the audit Event is durable
     """
     # 1. Pre-check governance (R6). Blocked -> do not execute.
