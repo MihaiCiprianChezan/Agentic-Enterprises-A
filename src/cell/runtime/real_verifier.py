@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import subprocess
 from datetime import UTC, datetime
+from typing import Literal
 
 from cell.domain.objects import ActorRef, CriterionScore, Goal, Output, Verdict
 
@@ -31,8 +32,8 @@ class RealVerifier:
 
     def verify(self, output: Output, goal: Goal) -> Verdict:
         passed, detail = self._run_tests()
-        decision = "pass" if passed else "return"
-        result = "met" if passed else "unmet"
+        decision: Literal["pass", "return"] = "pass" if passed else "return"
+        result: Literal["met", "unmet"] = "met" if passed else "unmet"
         return Verdict(
             id=f"verdict-{output.id}",
             output_id=output.id,

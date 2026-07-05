@@ -13,10 +13,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from cell.domain.objects import ActorRef
 from cell.planes.governance import SUSPENSION_POLICY
-from cell.versions import VERSIONS_FLOW, version_stats
+from cell.planes.memory import Event, EventStore
+from cell.versions import VERSIONS_FLOW, VersionRegistry, version_stats
 
 AUDIT_TRAIL = "__audit__"
 AUDITOR_ACTOR = ActorRef("Auditor", "ref")
@@ -45,7 +47,7 @@ class BreakerResult:
 
 
 class Auditor:
-    def __init__(self, store, registry) -> None:
+    def __init__(self, store: EventStore, registry: VersionRegistry) -> None:
         self.store = store
         self.registry = registry
 
@@ -207,7 +209,7 @@ class Auditor:
             result.escalated.append(version)
         return result
 
-    def _log(self, stage: str, version: str, now: datetime, **extra) -> None:
+    def _log(self, stage: str, version: str, now: datetime, **extra: Any) -> None:
         self.store.append(
             AUDIT_TRAIL,
             "audit",
@@ -237,7 +239,7 @@ class Auditor:
         return out
 
     @staticmethod
-    def _recent_suspensions(audit, now: datetime, window_h: int) -> int:
+    def _recent_suspensions(audit: list[Event], now: datetime, window_h: int) -> int:
         cutoff = now - timedelta(hours=window_h)
         return sum(
             1
@@ -270,7 +272,7 @@ class Auditor:
         return None
 
     @staticmethod
-    def _exec_roles(events) -> dict:
+    def _exec_roles(events: list[Event]) -> dict:
         """version -> the role that actually executed it (its execute event's actor.role) — the
         authoritative role, since versions can share a string across roles (e.g. ref-v0)."""
         out: dict = {}
@@ -281,7 +283,7 @@ class Auditor:
         return out
 
     @staticmethod
-    def _exec_flows(events) -> dict:
+    def _exec_flows(events: list[Event]) -> dict:
         """version -> set of flow_ids it executed in."""
         out: dict = {}
         for e in events:
@@ -291,7 +293,7 @@ class Auditor:
         return out
 
     @staticmethod
-    def _danger_flows(events) -> set:
+    def _danger_flows(events: list[Event]) -> set:
         """Flows carrying a safety breach: an escalation (Steward quarantine / flow escalation) or a
         governance block."""
         return {

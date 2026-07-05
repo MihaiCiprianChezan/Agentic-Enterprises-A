@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from cell.domain.objects import ActorRef, BudgetCap, Output, Ticket, Verdict
+from cell.domain.objects import ActorRef, BudgetCap, Goal, Output, Ticket, Verdict, WorkItem
 from cell.effects.wrapper import (
     ActionDescriptor,
     EffectsLedger,
@@ -34,11 +34,12 @@ from cell.effects.wrapper import (
     perform,
 )
 from cell.flow import NonIndependentVerification, _actor_of
-from cell.optimize import OPTIMIZER_ACTOR, mean_cost_for
+from cell.optimize import OPTIMIZER_ACTOR, Implementer, Optimizer, mean_cost_for
 from cell.planes.governance import PermissiveGovernance, capability_floor, level_for
 from cell.planes.memory import Checkpoint, CostDelta, EventStore
-from cell.planes.observability import Tracer, TraceStore, total_cost
+from cell.planes.observability import Clock, CostModel, Tracer, TraceStore, total_cost
 from cell.roles.contracts import Director, Executor, Orchestrator, Verifier
+from cell.versions import VersionRegistry
 
 _RANK = {"L0": 0, "L1": 1, "L2": 2, "L3": 3}  # lower = more powerful / more restricted
 
@@ -121,12 +122,12 @@ class CellHandbrake:
         ledger: EffectsLedger | None = None,
         governance: GovernanceCheck | None = None,
         recorder: TraceStore | None = None,
-        cost_model=None,
+        cost_model: CostModel | None = None,
         max_revisions: int = 2,
-        clock=None,
-        optimizer=None,
-        implementers=None,
-        registry=None,
+        clock: Clock | None = None,
+        optimizer: Optimizer | None = None,
+        implementers: list[Implementer] | None = None,
+        registry: VersionRegistry | None = None,
     ) -> None:
         self.director = director
         self.orchestrator = orchestrator
@@ -231,9 +232,9 @@ class CellHandbrake:
             else:
                 break
         if items and index >= len(items):
-            return self._existing_verdict(
-                flow_id, items[-1]
-            )  # completed: return verdict, append nothing
+            final = self._existing_verdict(flow_id, items[-1])
+            assert final is not None  # index only advances past an item with a recorded verdict
+            return final  # completed: return verdict, append nothing
         self.store.append(
             flow_id,
             "decision",
@@ -244,6 +245,8 @@ class CellHandbrake:
 
     def inspect(self, flow_id: str) -> Briefing:
         cp = self._require_checkpoint(flow_id)
+        pending = cp.pending_action
+        assert pending is not None  # every pause checkpoints its pending action (_pause)
         ticket = _ticket_from_dict(cp.state_snapshot["ticket"])
         index = cp.state_snapshot["index"]
         goal = self.director.specify(ticket)
@@ -258,8 +261,8 @@ class CellHandbrake:
             flow_id=flow_id,
             role=item.assigned_to.role,
             step=cp.step,
-            why=cp.pending_action.get("reason", "static breakpoint"),
-            pending_action=cp.pending_action,
+            why=pending.get("reason", "static breakpoint"),
+            pending_action=pending,
             authority_level=level_for(item.action_class),
             recent_decisions=recent,
             cost=total_cost(events),
@@ -269,7 +272,9 @@ class CellHandbrake:
 
     def inject(self, flow_id: str, value: dict[str, Any], actor: ActorRef) -> None:
         cp = self._require_checkpoint(flow_id)
-        seat_level = cp.pending_action.get("authority_level", "L0")
+        pending = cp.pending_action
+        assert pending is not None  # every pause checkpoints its pending action (_pause)
+        seat_level = pending.get("authority_level", "L0")
         # R11 (Art. 9): an injection may not exceed the assumed Role's class.
         action_class = value.get("action_class")
         if action_class is not None:
@@ -297,7 +302,7 @@ class CellHandbrake:
             flow_id,
             "injection",
             actor,
-            {**value, "stage": "inject", "work_item_id": cp.pending_action.get("work_item_id")},
+            {**value, "stage": "inject", "work_item_id": pending.get("work_item_id")},
         )
 
     def resume(self, flow_id: str) -> Verdict | Paused:
@@ -337,7 +342,9 @@ class CellHandbrake:
 
     # -- internals ------------------------------------------------------------
 
-    def _advance(self, flow_id, ticket, goal, items, index) -> Verdict | Paused:
+    def _advance(
+        self, flow_id: str, ticket: Ticket, goal: Goal, items: list[WorkItem], index: int
+    ) -> Verdict | Paused:
         verdict: Verdict | None = None
         while index < len(items):
             item = items[index]
@@ -354,7 +361,7 @@ class CellHandbrake:
         assert verdict is not None  # an empty item list never reaches here (flow.py guards it)
         return verdict
 
-    def _pause(self, flow_id, ticket, index, item) -> Paused:
+    def _pause(self, flow_id: str, ticket: Ticket, index: int, item: WorkItem) -> Paused:
         effective_level = level_for(item.action_class)
         reason = f"static breakpoint before {effective_level} action (Art. 5.2)"
         pending = {
@@ -384,7 +391,7 @@ class CellHandbrake:
             flow_id=flow_id, step=f"pre-execute:{item.id}", reason=reason, pending_action=pending
         )
 
-    def _assign(self, flow_id, item):
+    def _assign(self, flow_id: str, item: WorkItem) -> tuple[Executor, str | None]:
         """Route the work item to an implementer (model §10). The Optimizer picks the cheapest
         candidate that clears the constitutional floor; the choice is recorded as a `route` decision
         (auditable) and reused on resume/retry. Routing engages only with an optimizer and ≥2
@@ -402,10 +409,9 @@ class CellHandbrake:
         )
         if prior is not None:
             chosen = by_id.get(prior.payload["chosen"])  # resume/retry: reuse the recorded choice…
-            active = chosen is not None and (
+            if chosen is not None and (
                 self.registry is None or self.registry.status_of(chosen.id) == "active"
-            )
-            if active:
+            ):
                 return chosen.executor, chosen.id
             # …unless it is gone (re-assembled) or now suspended — re-route below instead of reusing it
         # Only route to active versions — a rolled_back/suspended version is never chosen (the
@@ -432,7 +438,15 @@ class CellHandbrake:
         )
         return chosen.executor, chosen.id
 
-    def _do_item(self, flow_id, item, goal, injection, executor, implementer_id=None) -> Verdict:
+    def _do_item(
+        self,
+        flow_id: str,
+        item: WorkItem,
+        goal: Goal,
+        injection: dict[str, Any] | None,
+        executor: Executor,
+        implementer_id: str | None = None,
+    ) -> Verdict:
         existing = self._existing_verdict(flow_id, item)
         if existing is not None:
             return existing  # idempotent resume: already executed and verified, do not re-run
@@ -496,10 +510,14 @@ class CellHandbrake:
                 idempotency_key=key,
                 intent={"output_id": output.id},
             )
+
+            def _artifact(_a: ActionDescriptor, _ref: str = output.artifact_ref) -> str:
+                return _ref
+
             perform(
                 action,
                 _actor_of(executor, "Executor"),
-                lambda _a, _ref=output.artifact_ref: _ref,
+                _artifact,
                 self.ledger,
                 self.governance,
                 store=self.store,
@@ -533,7 +551,7 @@ class CellHandbrake:
                 continue  # produce -> score -> revise loop (mirrors flow._produce_and_verify)
             return verdict
 
-    def _unverified_output(self, flow_id, item) -> tuple[Output, int] | None:
+    def _unverified_output(self, flow_id: str, item: WorkItem) -> tuple[Output, int] | None:
         """If the executor already produced an Output for this work item (an `execute` marker
         exists) but its verdict was never recorded, return (reconstructed Output, attempt) so the
         flow can resume at verification without re-running the executor; else None."""
@@ -563,7 +581,7 @@ class CellHandbrake:
         )
         return output, p.get("attempt", 0)
 
-    def _existing_verdict(self, flow_id, item) -> Verdict | None:
+    def _existing_verdict(self, flow_id: str, item: WorkItem) -> Verdict | None:
         events = self.store.read(flow_id)
         matches = [
             e
@@ -584,7 +602,7 @@ class CellHandbrake:
             verified_at=verify.at,
         )
 
-    def _latest_injection(self, flow_id, work_item_id) -> dict[str, Any] | None:
+    def _latest_injection(self, flow_id: str, work_item_id: str) -> dict[str, Any] | None:
         # Only an injection made against *this* work item is consumed (never a stale one
         # from an earlier pause).
         for e in reversed(self.store.read(flow_id)):
@@ -593,11 +611,11 @@ class CellHandbrake:
                 return {"value": value, "actor": e.actor}
         return None
 
-    def _adhoc_hit(self, flow_id, item) -> bool:
+    def _adhoc_hit(self, flow_id: str, item: WorkItem) -> bool:
         targets = {f"pre-execute:{item.id}", "pre-execute"}
         return any(bp["step"] in targets for bp in self.list_breakpoints(flow_id))
 
-    def _govern(self, flow_id, item) -> None:
+    def _govern(self, flow_id: str, item: WorkItem) -> None:
         """R6: evaluate the work item's action against the compiled rules before it pauses or
         executes, and log the allow/block decision (R12). A block stops it up front."""
         actor = _actor_of(self.executor, "Executor")
@@ -632,11 +650,11 @@ class CellHandbrake:
             moves.insert(3, "override")
         return moves
 
-    def _require_checkpoint(self, flow_id) -> Checkpoint:
+    def _require_checkpoint(self, flow_id: str) -> Checkpoint:
         cp = self.store.latest_checkpoint(flow_id)
         if cp is None:
             raise KeyError(f"no checkpoint for flow {flow_id!r}; nothing is paused")
         return cp
 
-    def _tracer(self, flow_id) -> Tracer:
+    def _tracer(self, flow_id: str) -> Tracer:
         return Tracer(self.recorder, flow_id, self.cost_model, clock=self.clock)

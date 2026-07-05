@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Literal
 
+from cell.planes.memory import Event, EventStore
+
 VERSIONS_FLOW = (
     "__versions__"  # reserved flow: the registry lives in the event plane (invariant #5)
 )
@@ -36,7 +38,7 @@ class VersionRegistry:
     """Event-sourced registry of role versions and their status, on the reserved `__versions__`
     flow — durable and auditable like any other plane state."""
 
-    def __init__(self, store) -> None:
+    def __init__(self, store: EventStore) -> None:
         self.store = store
 
     def register(self, role: str, version: str, variant_of: str | None = None) -> None:
@@ -61,11 +63,11 @@ class VersionRegistry:
             {"stage": "status", "version": version, "status": status},
         )
 
-    def records(self) -> dict:
+    def records(self) -> dict[tuple[str, str], VersionRecord]:
         """Current state folded from the `__versions__` events (latest wins). Keyed by
         `(role, version)` — distinct roles may share a version string (e.g. the reference roles all
         use `ref-v0`) and must not collapse."""
-        out: dict = {}
+        out: dict[tuple[str, str], VersionRecord] = {}
         for e in self.store.read(VERSIONS_FLOW):
             p, v = e.payload, e.payload.get("version")
             if v is None:
@@ -104,12 +106,12 @@ class VersionStat:
     )
 
 
-def _version_of(execute_event) -> str:
-    p = execute_event.payload
-    return p.get("implementer") or execute_event.actor.version
+def _version_of(execute_event: Event) -> str:
+    implementer: str | None = execute_event.payload.get("implementer")
+    return implementer or execute_event.actor.version
 
 
-def version_stats(events) -> dict[str, VersionStat]:
+def version_stats(events: list[Event]) -> dict[str, VersionStat]:
     """Per-version scorecard from field activity — the raw signal the Auditor rates. Counts each
     `execute` as a run for its version, joins each `verdict` to the version that produced its output,
     and folds the execute `compute` cost. (No per-version block count: a gate block prevents the
@@ -132,11 +134,12 @@ def version_stats(events) -> dict[str, VersionStat]:
 
     for e in events:
         if e.kind == "verdict":
-            ver = by_output.get(e.payload.get("output_id"))
-            if ver is None:
+            oid = e.payload.get("output_id")
+            producer = by_output.get(oid) if oid is not None else None
+            if producer is None:
                 continue
             if e.payload.get("decision") == "pass":
-                stats[ver].passes += 1
+                stats[producer].passes += 1
             elif e.payload.get("decision") == "return":
-                stats[ver].returns += 1
+                stats[producer].returns += 1
     return stats

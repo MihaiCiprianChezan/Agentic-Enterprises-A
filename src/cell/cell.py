@@ -10,20 +10,21 @@ PermissiveGovernance is dev-only.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
-from cell.auditor import Auditor
-from cell.domain.objects import ActorRef, Ticket, Verdict
+from cell.auditor import Auditor, BreakerResult
+from cell.domain.objects import ActorRef, BudgetCap, Ticket, Verdict
 from cell.effects.wrapper import EffectsLedger, GovernanceCheck, InMemoryEffectsLedger
 from cell.flow import _actor_of
 from cell.handbrake import Briefing, CellHandbrake, Paused
 from cell.planes.governance import RuleSetGovernance
-from cell.planes.memory import EventStore, InMemoryEventStore
-from cell.planes.observability import InMemoryTraceStore, TraceStore, total_cost
+from cell.planes.memory import CostDelta, Event, EventStore, InMemoryEventStore
+from cell.planes.observability import InMemoryTraceStore, TraceSpan, TraceStore, total_cost
 from cell.roles.contracts import Director, Executor, Orchestrator, Verifier
 from cell.roles.reference import RefDirector, RefExecutor, RefOrchestrator, RefVerifier
 from cell.steward import Steward, StewardAction
-from cell.versions import VersionRegistry, version_stats
+from cell.versions import VersionRecord, VersionRegistry, VersionStat, version_stats
 
 
 @dataclass
@@ -40,8 +41,8 @@ class Cell:
     recorder: TraceStore
     steward: Steward
     handbrake: CellHandbrake
-    registry: Any = None
-    auditor: Any = None
+    registry: VersionRegistry | None = None
+    auditor: Auditor | None = None
 
     @classmethod
     def assemble(
@@ -135,39 +136,42 @@ class Cell:
     ) -> str:
         return self.handbrake.set_breakpoint(flow_id, step, kind, condition)
 
-    def assess(self, flow_id: str, budget_cap) -> StewardAction:
+    def assess(self, flow_id: str, budget_cap: BudgetCap) -> StewardAction:
         return self.steward.assess(flow_id, budget_cap)
 
     # -- read helpers (for tests / the demo) ----------------------------------
 
-    def trace(self, flow_id: str):
+    def trace(self, flow_id: str) -> list[TraceSpan]:
         return self.recorder.spans(flow_id)
 
-    def cost(self, flow_id: str):
+    def cost(self, flow_id: str) -> CostDelta:
         return total_cost(self.store.read(flow_id))
 
-    def governance_log(self, flow_id: str):
+    def governance_log(self, flow_id: str) -> list[Event]:
         """All governance-plane events for the flow — both the _govern action-site gate decisions and any R11 injection blocks."""
         return [e for e in self.store.read(flow_id) if e.kind == "governance"]
 
-    def events(self, flow_id: str):
+    def events(self, flow_id: str) -> list[Event]:
         return self.store.read(flow_id)
 
-    def versions(self):
+    def versions(self) -> dict[tuple[str, str], VersionRecord]:
         """The registered role versions and their status (the Auditor's set, M9)."""
+        assert self.registry is not None  # assemble() always wires the registry
         return self.registry.records()
 
-    def version_stats(self):
+    def version_stats(self) -> dict[str, VersionStat]:
         """Per-version field scorecard (runs / pass / return / mean cost)."""
         return version_stats(self.store.all_events())
 
-    def audit(self):
+    def audit(self) -> dict:
         """Run the Auditor: rate every version, emit audit records, and return the ratings (M9b).
         Read + report only — it never suspends or modifies anything (that is 9c)."""
+        assert self.auditor is not None  # assemble() always wires the Auditor
         return self.auditor.report()
 
-    def enforce(self, now=None):
+    def enforce(self, now: datetime | None = None) -> BreakerResult:
         """Run the Auditor's suspend-and-escalate breaker (M9c): suspend versions rated dangerous
         (rate-limited), open the SLA for a critical suspension, and escalate a stuck one. Returns the
         BreakerResult. It never reinstates."""
+        assert self.auditor is not None  # assemble() always wires the Auditor
         return self.auditor.enforce(now)

@@ -17,7 +17,7 @@ import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from cell.planes.memory import CostDelta
 
@@ -42,7 +42,7 @@ def _claude_usage(stdout: str) -> CostDelta | None:
     if not isinstance(usage, dict):
         return None
 
-    def _num(x) -> float:
+    def _num(x: Any) -> float:
         try:
             return float(x)
         except (TypeError, ValueError):
@@ -135,9 +135,10 @@ class CliAgentRunner:
         except FileNotFoundError as exc:
             raise RunnerError(f"CLI agent binary not found: {argv[0]!r}") from exc
         except subprocess.TimeoutExpired as exc:
-            return RunResult(
-                returncode=124, stdout=exc.stdout or "", stderr=exc.stderr or "", timed_out=True
-            )
+            # encoding="utf-8" makes this a text-mode run, so any captured output is str
+            stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+            stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+            return RunResult(returncode=124, stdout=stdout, stderr=stderr, timed_out=True)
         cost = None
         if proc.returncode == 0 and self.spec.usage_parser is not None:
             try:

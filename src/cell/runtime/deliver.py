@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cell.domain.objects import ActorRef
 from cell.effects.wrapper import ActionDescriptor, make_idempotency_key, perform
+
+if TYPE_CHECKING:  # type-only; the composition root imports nothing from the runtime
+    from cell.cell import Cell
 
 DELIVERY_ACTOR = ActorRef(role="Executor", version="real-cli")
 
@@ -49,7 +52,7 @@ def open_pr_effect(intent: dict[str, Any]) -> str:
 
 
 def deliver_on_pass(
-    cell,
+    cell: Cell,
     flow_id: str,
     branch: str,
     *,

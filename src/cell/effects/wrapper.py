@@ -129,6 +129,7 @@ def perform(
     if rec is not None:
         if rec.status == "completed":
             # The exactly-once guarantee: never re-execute a completed effect.
+            assert rec.result_digest is not None  # mark_completed always records the digest
             return rec.result_digest
         if rec.status == "in_flight":
             if action.effect_kind == "irreversible":
@@ -187,10 +188,10 @@ class InMemoryEffectsLedger:
     def __init__(self) -> None:
         self._records: dict[str, EffectRecord] = {}
 
-    def get(self, key):
+    def get(self, key: str) -> EffectRecord | None:
         return self._records.get(key)
 
-    def put_in_flight(self, key):
+    def put_in_flight(self, key: str) -> EffectRecord:
         rec = self._records.get(key)
         if rec is None:
             rec = EffectRecord(idempotency_key=key, status="in_flight", attempts=0)
@@ -199,12 +200,12 @@ class InMemoryEffectsLedger:
         self._records[key] = rec
         return rec
 
-    def mark_completed(self, key, result_digest):
+    def mark_completed(self, key: str, result_digest: str) -> None:
         rec = self._records[key]
         rec.status = "completed"
         rec.result_digest = result_digest
 
-    def mark_failed(self, key):
+    def mark_failed(self, key: str) -> None:
         rec = self._records[key]
         rec.status = "failed"
 
@@ -261,7 +262,9 @@ class SqliteEffectsLedger:
                 "status = 'in_flight', attempts = attempts + 1, at = excluded.at",
                 (key, now),
             )
-        return self.get(key)
+        rec = self.get(key)
+        assert rec is not None  # the committed upsert above guarantees the row exists
+        return rec
 
     def mark_completed(self, key: str, result_digest: str) -> None:
         with self._conn:

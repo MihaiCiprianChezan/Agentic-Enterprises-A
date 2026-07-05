@@ -9,8 +9,18 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from cell.cell import Cell
-from cell.domain.objects import ActorRef, BudgetCap, CriterionScore, Ticket, Verdict, WorkItem
+from cell.domain.objects import (
+    ActorRef,
+    BudgetCap,
+    CriterionScore,
+    Goal,
+    Output,
+    Ticket,
+    Verdict,
+    WorkItem,
+)
 from cell.effects.wrapper import GovernanceBlocked, InMemoryEffectsLedger
+from cell.handbrake import Paused
 from cell.planes.memory import CostDelta, InMemoryEventStore
 from cell.roles.reference import EXECUTOR, RefExecutor
 
@@ -26,7 +36,7 @@ def _ticket(tid: str) -> Ticket:
 class _L1Orchestrator:
     actor = ActorRef(role="Orchestrator", version="l1")
 
-    def decompose(self, goal):
+    def decompose(self, goal: Goal) -> list[WorkItem]:
         return [
             WorkItem(
                 id=f"wi-{goal.id}",
@@ -43,7 +53,7 @@ class _L1Orchestrator:
 class _L0Orchestrator:
     actor = ActorRef(role="Orchestrator", version="l0")
 
-    def decompose(self, goal):
+    def decompose(self, goal: Goal) -> list[WorkItem]:
         return [
             WorkItem(
                 id=f"wi-{goal.id}",
@@ -60,7 +70,7 @@ class _L0Orchestrator:
 class _ReturnVerifier:
     actor = ActorRef(role="Verifier", version="ref-v0")
 
-    def verify(self, output, goal):
+    def verify(self, output: Output, goal: Goal) -> Verdict:
         return Verdict(
             id=f"v-{output.id}",
             output_id=output.id,
@@ -81,6 +91,7 @@ def main() -> None:
     _rule("1. Routine path — autonomous (L2, no human)")
     cell = Cell.assemble()
     verdict = cell.submit(_ticket("t1"), "f1")
+    assert isinstance(verdict, Verdict)  # L2 path: no breakpoint, so it never pauses
     print(f"verdict: {verdict.decision}")
     print(f"governance: {cell.governance_log('f1')[-1].payload['decision']}")
     print(f"cost: {cell.cost('f1').compute} | steps: {[s.step for s in cell.trace('f1')]}")
@@ -89,6 +100,7 @@ def main() -> None:
     _rule("2. Dramatic path — handbrake takeover (L1)")
     cell = Cell.assemble(orchestrator=_L1Orchestrator())
     paused = cell.submit(_ticket("t2"), "f2")
+    assert isinstance(paused, Paused)  # L1 action: the static breakpoint always pauses
     print(f"paused at: {paused.step} ({paused.reason})")
     briefing = cell.inspect("f2")
     print(f"briefing: role={briefing.role} moves={briefing.valid_moves}")
@@ -99,6 +111,7 @@ def main() -> None:
         human,
     )
     verdict = cell.resume("f2")
+    assert isinstance(verdict, Verdict)  # the one L1 item was resumed, so the flow completes
     artifact = next(e for e in cell.events("f2") if e.payload.get("stage") == "execute").payload[
         "artifact_ref"
     ]
@@ -112,7 +125,7 @@ def main() -> None:
     class _CountingExecutor:
         actor = EXECUTOR
 
-        def execute(self, item):
+        def execute(self, item: WorkItem) -> Output:
             calls["n"] += 1
             return RefExecutor().execute(item)
 

@@ -148,7 +148,14 @@ class InMemoryEventStore:
         self._events: dict[str, list[Event]] = {}
         self._checkpoints: dict[str, Checkpoint] = {}
 
-    def append(self, flow_id, kind, actor, payload, cost=None) -> Event:
+    def append(
+        self,
+        flow_id: str,
+        kind: EventKind,
+        actor: ActorRef,
+        payload: dict[str, Any],
+        cost: CostDelta | None = None,
+    ) -> Event:
         log = self._events.setdefault(flow_id, [])
         prev_hash = log[-1].hash if log else "GENESIS"
         seq = len(log)
@@ -167,7 +174,7 @@ class InMemoryEventStore:
         log.append(ev)
         return ev
 
-    def read(self, flow_id) -> list[Event]:
+    def read(self, flow_id: str) -> list[Event]:
         return list(self._events.get(flow_id, []))
 
     def all_events(self) -> list[Event]:
@@ -176,7 +183,7 @@ class InMemoryEventStore:
             events, key=lambda e: (e.flow_id, e.seq)
         )  # match the Protocol + durable order
 
-    def verify_chain(self, flow_id) -> bool:
+    def verify_chain(self, flow_id: str) -> bool:
         prev = "GENESIS"
         for ev in self._events.get(flow_id, []):
             if ev.prev_hash != prev or ev.hash != compute_hash(prev, ev.payload):
@@ -187,7 +194,7 @@ class InMemoryEventStore:
     def checkpoint(self, cp: Checkpoint) -> None:
         self._checkpoints[cp.flow_id] = cp
 
-    def latest_checkpoint(self, flow_id) -> Checkpoint | None:
+    def latest_checkpoint(self, flow_id: str) -> Checkpoint | None:
         return self._checkpoints.get(flow_id)
 
 
@@ -233,7 +240,14 @@ class DurableEventStore:
 
     # -- EventStore Protocol --------------------------------------------------
 
-    def append(self, flow_id, kind, actor: ActorRef, payload, cost=None) -> Event:
+    def append(
+        self,
+        flow_id: str,
+        kind: EventKind,
+        actor: ActorRef,
+        payload: dict[str, Any],
+        cost: CostDelta | None = None,
+    ) -> Event:
         # The contract takes an ActorRef; require it so the returned Event.actor and the
         # reloaded read() actor are the same type (asdict raises on anything else).
         actor_json = json.dumps(asdict(actor))
@@ -280,7 +294,7 @@ class DurableEventStore:
             cost=cost,
         )
 
-    def read(self, flow_id) -> list[Event]:
+    def read(self, flow_id: str) -> list[Event]:
         rows = self._conn.execute(
             "SELECT * FROM events WHERE flow_id = ? ORDER BY seq", (flow_id,)
         ).fetchall()
@@ -290,7 +304,7 @@ class DurableEventStore:
         rows = self._conn.execute("SELECT * FROM events ORDER BY flow_id, seq").fetchall()
         return [self._row_to_event(r) for r in rows]
 
-    def verify_chain(self, flow_id) -> bool:
+    def verify_chain(self, flow_id: str) -> bool:
         prev = "GENESIS"
         for ev in self.read(flow_id):
             if ev.prev_hash != prev or ev.hash != compute_hash(prev, ev.payload):
@@ -316,7 +330,7 @@ class DurableEventStore:
                 ),
             )
 
-    def latest_checkpoint(self, flow_id) -> Checkpoint | None:
+    def latest_checkpoint(self, flow_id: str) -> Checkpoint | None:
         row = self._conn.execute(
             "SELECT * FROM checkpoints WHERE flow_id = ? ORDER BY rowid DESC LIMIT 1",
             (flow_id,),

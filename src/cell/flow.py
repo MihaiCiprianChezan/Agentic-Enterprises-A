@@ -14,8 +14,10 @@ The handbrake (pause/inspect/inject/resume) is M4; compiled governance is M5.
 
 from __future__ import annotations
 
-from cell.domain.objects import ActorRef, Ticket, Verdict
-from cell.planes.memory import EventStore
+from collections.abc import Callable
+
+from cell.domain.objects import ActorRef, Goal, Ticket, Verdict, WorkItem
+from cell.planes.memory import CostDelta, EventStore
 from cell.planes.observability import Clock, CostModel, Tracer, TraceStore, digest
 from cell.roles.contracts import Director, Executor, Orchestrator, Verifier
 
@@ -30,7 +32,7 @@ class EmptyDecomposition(Exception):
     it never returns a None verdict; an empty decomposition is an anomaly to escalate."""
 
 
-def _actor_of(role, role_name: str) -> ActorRef:
+def _actor_of(role: object, role_name: str) -> ActorRef:
     """The role's declared identity for attribution, or an honest fallback. Reads an optional
     `.actor` without widening the Protocol — precise when the implementer declares one,
     `<role>/unattributed` when it does not, never a false version claim."""
@@ -63,7 +65,7 @@ def run_flow(
     """
     tracer = Tracer(recorder, flow_id, cost_model, clock)
 
-    def ecost(stage: str):
+    def ecost(stage: str) -> CostDelta | None:
         # Events carry cost only when a model is wired (Rule C1); else None, as in M2.
         return cost_model(stage) if cost_model else None
 
@@ -111,11 +113,20 @@ def run_flow(
         )
         if verdict.decision != "pass":
             break  # return (revisions exhausted) or block -> stop here (Art. 5; wiring doc)
+    assert verdict is not None  # items is non-empty (guarded above), so the loop ran
     return verdict
 
 
 def _produce_and_verify(
-    item, goal, executor, verifier, store, flow_id, max_revisions, tracer, ecost
+    item: WorkItem,
+    goal: Goal,
+    executor: Executor,
+    verifier: Verifier,
+    store: EventStore,
+    flow_id: str,
+    max_revisions: int,
+    tracer: Tracer,
+    ecost: Callable[[str], CostDelta | None],
 ) -> Verdict:
     attempt = 0
     while True:

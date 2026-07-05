@@ -54,7 +54,7 @@ class RunSummary:
 # -- chain integrity ----------------------------------------------------------
 
 
-def verify_chain(events) -> tuple:
+def verify_chain(events: list[Event]) -> tuple:
     """Recompute every link with the store's own hash function — a true tamper-evidence check.
     Returns (intact, first_broken_seq)."""
     prev = "GENESIS"
@@ -76,7 +76,7 @@ def _is_effect(ev: Event) -> bool:
     return ev.kind == "action" and "effect_kind" in ev.payload
 
 
-def _verdict(events) -> str:
+def _verdict(events: list[Event]) -> str:
     verdicts = [e for e in events if e.kind == "verdict"]
     if verdicts:
         d = str(verdicts[-1].payload.get("decision", "")).lower()
@@ -88,7 +88,7 @@ def _verdict(events) -> str:
     return "UNKNOWN"
 
 
-def _actors(events) -> list:
+def _actors(events: list[Event]) -> list:
     seen = []
     for e in events:
         label = e.actor.role if e.actor.version == "ref" else f"{e.actor.role}({e.actor.version})"
@@ -97,7 +97,9 @@ def _actors(events) -> list:
     return seen
 
 
-def summarize(events, confirm_once: Callable[[str], bool | None] | None = None) -> RunSummary:
+def summarize(
+    events: list[Event], confirm_once: Callable[[str], bool | None] | None = None
+) -> RunSummary:
     """Derive the at-a-glance run summary from the durable events. `confirm_once`, if given, maps an
     effect's idempotency key to its exactly-once status (True/False), or None if unknown."""
     flow_id = events[0].flow_id if events else ""
@@ -186,7 +188,7 @@ def key_fact(ev: Event) -> str:
             if p.get("result_digest"):
                 out += f" → {p['result_digest']}"
             return out
-        return p.get("stage", "action")
+        return str(p.get("stage", "action"))
     if k == "verdict":
         d = str(p.get("decision", "")).upper()
         if d == "RETURN" and p.get("reason"):
@@ -197,7 +199,7 @@ def key_fact(ev: Event) -> str:
             return f"register {p.get('role', '?')} {p.get('version', '?')} ({p.get('status', 'active')})"
         if p.get("stage") == "status":
             return f"status {p.get('version', '?')} → {p.get('status', '?')}"
-        return p.get("stage", "version")
+        return str(p.get("stage", "version"))
     return f"{k} · {','.join(list(p.keys())[:3])}"
 
 
@@ -224,7 +226,7 @@ def format_header(s: RunSummary, db: str) -> str:
     )
 
 
-def format_timeline(events) -> str:
+def format_timeline(events: list[Event]) -> str:
     if not events:
         return "(no events)"
     t0 = events[0].at
@@ -299,7 +301,7 @@ def _effect_confirmed(conn: sqlite3.Connection, key: str) -> bool | None:
     return None if row is None else (row["status"] == "completed")
 
 
-def main(argv=None) -> int:
+def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     if hasattr(sys.stdout, "reconfigure"):
         try:

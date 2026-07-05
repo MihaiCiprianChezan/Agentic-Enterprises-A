@@ -17,6 +17,7 @@ from typing import Protocol
 
 from cell.domain.objects import ActorRef, WorkItem
 from cell.planes.governance import capability_floor
+from cell.planes.memory import Event
 from cell.roles.contracts import Executor
 
 OPTIMIZER_ACTOR = ActorRef("Optimizer", "ref")  # the non-authoritative system role that routes
@@ -57,7 +58,7 @@ class CostAwareOptimizer:
         return min(eligible, key=lambda c: costs.get(c.id, c.nominal_cost))
 
 
-def mean_cost_for(events, implementer_id: str) -> float | None:
+def mean_cost_for(events: list[Event], implementer_id: str) -> float | None:
     """The mean attributed `compute` cost of past `execute` events by this implementer. Attribution
     is by the explicit `implementer` tag the handbrake records when it routes (authoritative), with
     a fallback to the executor actor's `version`. None when there is no history (caller uses nominal)."""
