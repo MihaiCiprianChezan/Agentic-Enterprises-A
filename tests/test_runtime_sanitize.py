@@ -25,6 +25,10 @@ HOSTILE_BRANCHES = [
     "feat//x",  # empty path segment
     "feat/",  # trailing slash
     "feat.lock",  # git refuses *.lock refs
+    "feat.lock/x",  # ...also as a mid-path component
+    "feat/.hidden",  # component starting with a dot
+    "feat.",  # component ending with a dot
+    "a./b",  # ...also mid-path
     "a?b",  # glob
     123,  # not a string
     None,  # not a string
