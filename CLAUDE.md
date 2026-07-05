@@ -96,6 +96,10 @@ tests/                  # one or more suites per milestone (M0–M9) + cross-cut
   until their precondition (a second cell) exists (Constitution Art. 3.4).
 - **Tool-agnostic until it isn't.** Pick concrete tools per `Component-Selection.md`; keep them
   behind the interfaces so they stay swappable (invariant #1).
+- **Single-threaded per flow.** One writer per flow at a time (a resumed flow is a new writer
+  after the old one died, never a concurrent one). The durable store's UNIQUE(flow_id, seq)
+  key is the backstop: a racing second writer fails loudly instead of forking the chain.
+  See the module docstring in `cell/planes/memory.py`.
 
 ## How to run
 

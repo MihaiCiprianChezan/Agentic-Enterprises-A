@@ -326,6 +326,23 @@ development-only stub.
 
 Verification (R5) runs as the inline gate on the Output before handback; cost rules (C1/C2) feed R7 continuously. **R8 is not a per-action check:** loop/runaway detection is a continuous Steward/Observability signal (Role-Contracts §5; build plan §3.2) that quarantines a flow *before* it reaches the cap — it runs alongside this procedure, not inside it.
 
+**The enforcement-site map (one row per rule).** There is deliberately no single enforcement
+site: a rule is enforced where its clause bites — pre-effect, structurally, or continuously.
+What unifies them is R12: **every** site appends its decision to the same hash-chained event
+plane, so the audit trail (not the site) is the single audit surface.
+
+| Rule | Enforcement site |
+|---|---|
+| **R1, R3, R9, R11** | `RuleSetGovernance.decide` — the per-action, pre-effect gate the assembled cell wires at the action site |
+| **R6** | the gate's *placement*: `perform()` and the Handbrake evaluate governance **before** any effect fires |
+| **R2** | structural — the rule registry is snapshot-frozen at construction; it changes only through the amendment path |
+| **R4** | structural — the Handbrake's static breakpoint before any L1/L0 action |
+| **R5** | structural — the flow's independence check on the Output before handback |
+| **R7** | continuous — the Steward's budget assessment over attributed cost (C1/C2) |
+| **R8** | continuous — the Steward's loop detection; quarantines before the cap |
+| **R10** | the pause/escalate paths — the Handbrake checkpoint and Steward quarantine, surfaced as `escalation` events |
+| **R12** | every site above appends its decision — allow and block alike — to the tamper-evident event plane |
+
 **On the constitution clauses that are not per-action rules.** Art. 10.3 (tamper-evidence) is enforced structurally by the event plane's hash chain (§2.1) and surfaced in R12. Art. 2.3 (no self-modification of the constitution) is enforced at the runtime surface by R2 (a role cannot change the registry/rules) and architecturally by the amendment-only compilation path (Constitution Art. 8.3). Art. 2.4 (inward sovereignty — nothing outside reaches inside except through the constitution or an authorized Role) is an architectural boundary property of the cell, not an action check, so it is realized in the cell's access model rather than as an R-rule. None is silently dropped (§5.4); each is accounted for, just not all as per-action rules.
 
 ### 5.4 Validation & attestation (the step the model insists on naming)
