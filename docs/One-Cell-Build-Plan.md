@@ -9,7 +9,7 @@ Scope: One cell · Software-delivery workflow · Tool-agnostic
 
 **A concrete MVP build plan for a single sovereign cell, scoped around a software-delivery workflow, specified by required capabilities and guarantees rather than named tools.**
 
-This is the companion build document to `Agentic-First-Enterprises.md` (referred to below as "the model"). It takes the model's own adoption sequence (§15) and YAGNI discipline (invariant #8) and turns them into a buildable plan for exactly one cell — not a federation. Federation and the supra-constitution are deliberately **out of scope** here. The Optimizer (M8) and Auditor (M9) — originally deferred and only seamed — have **since been built**, now that their preconditions (capability/cost spread; multiple scored versions) exist.
+This is the companion build document to [Agentic-First-Enterprises](https://github.com/MihaiCiprianChezan/Agentic-First-Enterprises) (the canonical spec repo, referred to below as "the model"). It takes the model's own adoption sequence (§15) and YAGNI discipline (invariant #8) and turns them into a buildable plan for exactly one cell — not a federation. Federation and the supra-constitution are deliberately **out of scope** here. The Optimizer (M8) and Auditor (M9) — originally deferred and only seamed — have **since been built**, now that their preconditions (capability/cost spread; multiple scored versions) exist.
 
 The plan is **tool-agnostic by design**, matching the model's technology-neutral stance: every layer is specified as a set of *required capabilities and guarantees*. Any engine that satisfies the guarantee qualifies. Where a guarantee is the hard part, that is called out explicitly.
 

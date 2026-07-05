@@ -3,7 +3,7 @@ Title: Cell Build Spec — Governance Rules, Schemas, and the Idempotency Contra
 Version: 0.1.0
 Date: 27.06.2026
 Status: Draft
-Companion to: Agentic-First-Enterprises.md · One-Cell-Build-Plan.md · Cell-Constitution.md · Role-Contracts.md · Handbrake-Interface.md
+Companion to: [Agentic-First-Enterprises](https://github.com/MihaiCiprianChezan/Agentic-First-Enterprises) · One-Cell-Build-Plan.md · Cell-Constitution.md · Role-Contracts.md · Handbrake-Interface.md
 ---
 
 # Cell Build Spec

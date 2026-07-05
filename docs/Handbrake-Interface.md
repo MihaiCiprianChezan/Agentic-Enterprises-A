@@ -3,7 +3,7 @@ Title: The Handbrake — Control-Plane Interface (M4)
 Version: 0.1.0
 Date: 27.06.2026
 Status: Draft
-Companion to: Agentic-First-Enterprises.md · One-Cell-Build-Plan.md · Cell-Constitution.md · Role-Contracts.md
+Companion to: [Agentic-First-Enterprises](https://github.com/MihaiCiprianChezan/Agentic-First-Enterprises) · One-Cell-Build-Plan.md · Cell-Constitution.md · Role-Contracts.md
 ---
 
 # The Handbrake

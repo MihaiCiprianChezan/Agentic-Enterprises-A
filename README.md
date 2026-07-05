@@ -3,7 +3,7 @@
 [![tests](https://github.com/MihaiCiprianChezan/Agentic-Enterprises-A/actions/workflows/test.yml/badge.svg)](https://github.com/MihaiCiprianChezan/Agentic-Enterprises-A/actions/workflows/test.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-One sovereign **cell** of the [Agent-Native Enterprise](docs/Agentic-First-Enterprises.md) model —
+One sovereign **cell** of the [Agent-Native Enterprise](https://github.com/MihaiCiprianChezan/Agentic-First-Enterprises) model —
 the smallest complete unit of the architecture, scoped around a software-delivery workflow:
 
 > **intake a feature/bug request → produce a code change → verify it → hand the change back to
@@ -149,7 +149,7 @@ ticket → verified PR, role by role, with the exact `observe` output of a real 
 
 The docs are authoritative — if code and a doc disagree, the doc wins (or the doc is amended first).
 
-1. [`Agentic-First-Enterprises.md`](docs/Agentic-First-Enterprises.md) — the model; the 11 design invariants are non-negotiable. (Pinned v1.5.0 snapshot; the canonical spec lives at [Agentic-First-Enterprises](https://github.com/MihaiCiprianChezan/Agentic-First-Enterprises).)
+1. [Agentic-First-Enterprises](https://github.com/MihaiCiprianChezan/Agentic-First-Enterprises) — the model (canonical spec repo); the 11 design invariants are non-negotiable.
 2. [`One-Cell-Build-Plan.md`](docs/One-Cell-Build-Plan.md) — the build plan and milestone order (M0–M9; §6 lists the core M0–M7 sequence, with M8–M9 built past the MVP).
 3. [`Cell-Constitution.md`](docs/Cell-Constitution.md) — the constitution this cell runs under (Articles 1–10).
 4. [`Role-Contracts.md`](docs/Role-Contracts.md) — the five role interfaces.
