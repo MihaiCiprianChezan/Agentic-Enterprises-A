@@ -1,5 +1,8 @@
 # Agentic-Enterprises-A
 
+[![tests](https://github.com/MihaiCiprianChezan/Agentic-Enterprises-A/actions/workflows/test.yml/badge.svg)](https://github.com/MihaiCiprianChezan/Agentic-Enterprises-A/actions/workflows/test.yml)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 One sovereign **cell** of the [Agent-Native Enterprise](docs/Agentic-First-Enterprises.md) model —
 the smallest complete unit of the architecture, scoped around a software-delivery workflow:
 
@@ -168,3 +171,7 @@ Per the build plan and invariant #8 (add a tier only when its precondition exist
 
 A reference implementation, built milestone by milestone (M0–M9 complete) and meant to be argued
 with and corrected where it meets reality.
+
+## License
+
+[Apache-2.0](LICENSE).
