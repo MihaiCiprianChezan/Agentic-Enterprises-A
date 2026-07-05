@@ -11,25 +11,33 @@ budget cap.
 
 from __future__ import annotations
 
+import pytest
+
 from cell.domain.objects import ActorRef, BudgetCap
 from cell.planes.memory import CostDelta, InMemoryEventStore
 from cell.planes.observability import total_cost
-import pytest
-
 from cell.steward import InvalidRollback, Steward, StewardAction
 
 EXEC = ActorRef(role="Executor", version="ref-v0")
 _BUDGET = BudgetCap(compute=10_000, wall_clock_ms=15 * 60 * 1000, units="tokens")
 
 
-def _loop(store, flow_id, n, *, per=CostDelta(compute=100), work_item="wi-1"):
+def _loop(store, flow_id, n, *, per=None, work_item="wi-1"):
     """Simulate a looping flow: n execute attempts on the same work item, each costing `per`."""
+    if per is None:
+        per = CostDelta(compute=100)
     for i in range(n):
-        store.append(flow_id, "action", EXEC,
-                     {"stage": "execute", "work_item_id": work_item, "attempt": i}, cost=per)
+        store.append(
+            flow_id,
+            "action",
+            EXEC,
+            {"stage": "execute", "work_item_id": work_item, "attempt": i},
+            cost=per,
+        )
 
 
 # --- the acceptance: an induced loop is quarantined before the cap -----------
+
 
 def test_an_induced_loop_is_quarantined_before_the_budget_cap():
     store = InMemoryEventStore()
@@ -68,6 +76,7 @@ def test_a_healthy_flow_is_not_quarantined():
 
 # --- quarantine + rollback ---------------------------------------------------
 
+
 def test_quarantine_is_recorded_on_the_durable_trail():
     store = InMemoryEventStore()
     steward = Steward(store)
@@ -98,6 +107,7 @@ def test_steward_acts_are_attributed_to_the_steward():
 
 
 # --- review fixes: multi-dimension cap, validated rollback, scoped quarantine -
+
 
 def test_wall_clock_cap_is_quarantined_even_when_compute_is_low():
     store = InMemoryEventStore()

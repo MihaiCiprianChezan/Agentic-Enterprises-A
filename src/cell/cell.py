@@ -10,8 +10,9 @@ PermissiveGovernance is dev-only.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any
 
+from cell.auditor import Auditor
 from cell.domain.objects import ActorRef, Ticket, Verdict
 from cell.effects.wrapper import EffectsLedger, GovernanceCheck, InMemoryEffectsLedger
 from cell.flow import _actor_of
@@ -21,7 +22,6 @@ from cell.planes.memory import EventStore, InMemoryEventStore
 from cell.planes.observability import InMemoryTraceStore, TraceStore, total_cost
 from cell.roles.contracts import Director, Executor, Orchestrator, Verifier
 from cell.roles.reference import RefDirector, RefExecutor, RefOrchestrator, RefVerifier
-from cell.auditor import Auditor
 from cell.steward import Steward, StewardAction
 from cell.versions import VersionRegistry, version_stats
 
@@ -29,6 +29,7 @@ from cell.versions import VersionRegistry, version_stats
 @dataclass
 class Cell:
     """The wired cell. Build it with `Cell.assemble(...)`."""
+
     director: Director
     orchestrator: Orchestrator
     executor: Executor
@@ -43,17 +44,24 @@ class Cell:
     auditor: Any = None
 
     @classmethod
-    def assemble(cls, *, director: Optional[Director] = None,
-                 orchestrator: Optional[Orchestrator] = None,
-                 executor: Optional[Executor] = None,
-                 verifier: Optional[Verifier] = None,
-                 store: Optional[EventStore] = None,
-                 governance: Optional[GovernanceCheck] = None,
-                 ledger: Optional[EffectsLedger] = None,
-                 recorder: Optional[TraceStore] = None,
-                 loop_threshold: int = 3, cost_model: Any = None,
-                 max_revisions: int = 2, clock: Any = None,
-                 optimizer: Any = None, implementers: Any = None) -> "Cell":
+    def assemble(
+        cls,
+        *,
+        director: Director | None = None,
+        orchestrator: Orchestrator | None = None,
+        executor: Executor | None = None,
+        verifier: Verifier | None = None,
+        store: EventStore | None = None,
+        governance: GovernanceCheck | None = None,
+        ledger: EffectsLedger | None = None,
+        recorder: TraceStore | None = None,
+        loop_threshold: int = 3,
+        cost_model: Any = None,
+        max_revisions: int = 2,
+        clock: Any = None,
+        optimizer: Any = None,
+        implementers: Any = None,
+    ) -> Cell:
         director = director or RefDirector()
         orchestrator = orchestrator or RefOrchestrator()
         executor = executor or RefExecutor()
@@ -68,21 +76,46 @@ class Cell:
         # operating roles, plus each routable implementer (an Executor variant).
         for role in (director, orchestrator, executor, verifier):
             actor = _actor_of(role, "")
-            registry.register(actor.role, actor.version)   # by role name, matching execute-event roles
-        for im in (implementers or []):
+            registry.register(
+                actor.role, actor.version
+            )  # by role name, matching execute-event roles
+        for im in implementers or []:
             registry.register("Executor", im.id)
         handbrake = CellHandbrake(
-            director=director, orchestrator=orchestrator, executor=executor,
-            verifier=verifier, store=store, ledger=ledger, governance=governance,
-            recorder=recorder, cost_model=cost_model, max_revisions=max_revisions, clock=clock,
-            optimizer=optimizer, implementers=implementers, registry=registry)
+            director=director,
+            orchestrator=orchestrator,
+            executor=executor,
+            verifier=verifier,
+            store=store,
+            ledger=ledger,
+            governance=governance,
+            recorder=recorder,
+            cost_model=cost_model,
+            max_revisions=max_revisions,
+            clock=clock,
+            optimizer=optimizer,
+            implementers=implementers,
+            registry=registry,
+        )
         auditor = Auditor(store, registry)
-        return cls(director, orchestrator, executor, verifier, store, governance,
-                   ledger, recorder, steward, handbrake, registry, auditor)
+        return cls(
+            director,
+            orchestrator,
+            executor,
+            verifier,
+            store,
+            governance,
+            ledger,
+            recorder,
+            steward,
+            handbrake,
+            registry,
+            auditor,
+        )
 
     # -- operations (delegate to the control plane / steward) -----------------
 
-    def submit(self, ticket: Ticket, flow_id: str) -> Union[Verdict, Paused]:
+    def submit(self, ticket: Ticket, flow_id: str) -> Verdict | Paused:
         return self.handbrake.start(ticket, flow_id)
 
     def inspect(self, flow_id: str) -> Briefing:
@@ -91,14 +124,15 @@ class Cell:
     def inject(self, flow_id: str, value: dict, actor: ActorRef) -> None:
         return self.handbrake.inject(flow_id, value, actor)
 
-    def resume(self, flow_id: str) -> Union[Verdict, Paused]:
+    def resume(self, flow_id: str) -> Verdict | Paused:
         return self.handbrake.resume(flow_id)
 
-    def replay(self, flow_id: str, to_step: Optional[str] = None) -> list[dict]:
+    def replay(self, flow_id: str, to_step: str | None = None) -> list[dict]:
         return self.handbrake.replay(flow_id, to_step)
 
-    def set_breakpoint(self, flow_id: str, step: str, kind: str = "static",
-                       condition: Optional[str] = None) -> str:
+    def set_breakpoint(
+        self, flow_id: str, step: str, kind: str = "static", condition: str | None = None
+    ) -> str:
         return self.handbrake.set_breakpoint(flow_id, step, kind, condition)
 
     def assess(self, flow_id: str, budget_cap) -> StewardAction:

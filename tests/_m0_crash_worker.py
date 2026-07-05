@@ -35,8 +35,11 @@ def main() -> None:
     actor = ActorRef(role="Executor", version="v0")
     key = make_idempotency_key("flow1", "the_effect", {"t": "x"})
     action = ActionDescriptor(
-        id="a1", action_class="CLASS_EXTERNAL_COMM", effect_kind=mode,
-        idempotency_key=key, intent={"t": "x"},
+        id="a1",
+        action_class="CLASS_EXTERNAL_COMM",
+        effect_kind=mode,
+        idempotency_key=key,
+        intent={"t": "x"},
     )
 
     def execute(_action):

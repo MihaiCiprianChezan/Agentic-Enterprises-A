@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from cell.domain.objects import ActorRef
 from cell.planes.observability import total_cost
@@ -33,6 +33,7 @@ class InvalidRollback(Exception):
 @dataclass(frozen=True)
 class StewardAction:
     """The outcome of an assessment or intervention, carrying the rule/clause behind it."""
+
     flow_id: str
     kind: Literal["ok", "quarantine", "rollback"]
     reason: str
@@ -58,28 +59,39 @@ class Steward:
         breach = self._cap_breach(cost, budget_cap)
         if breach is not None:
             return self.quarantine(
-                flow_id, f"running cost reached the budget cap ({breach})",
-                rule="R7", clause="Art. 6.1")
+                flow_id,
+                f"running cost reached the budget cap ({breach})",
+                rule="R7",
+                clause="Art. 6.1",
+            )
 
-        attempts = Counter(e.payload.get("work_item_id") for e in events
-                           if e.payload.get("stage") == "execute")
+        attempts = Counter(
+            e.payload.get("work_item_id") for e in events if e.payload.get("stage") == "execute"
+        )
         if attempts and max(attempts.values()) > self._loop_threshold:
             worst = max(attempts.values())
             return self.quarantine(
                 flow_id,
                 f"loop: {worst} execute attempts on one work item exceeds {self._loop_threshold}",
-                rule="R8", clause="Art. 6.2")
+                rule="R8",
+                clause="Art. 6.2",
+            )
 
         return StewardAction(flow_id, "ok", "healthy", rule="-", clause="-")
 
     # -- intervention ---------------------------------------------------------
 
-    def quarantine(self, flow_id: str, reason: str, *, rule: str = "R8",
-                   clause: str = "Art. 6.2") -> StewardAction:
+    def quarantine(
+        self, flow_id: str, reason: str, *, rule: str = "R8", clause: str = "Art. 6.2"
+    ) -> StewardAction:
         """Pause a drifting flow; it may not proceed (Art. 6.2). Recorded on the durable,
         tamper-evident trail and attributed to the Steward."""
-        self._store.append(flow_id, "escalation", STEWARD,
-                           {"stage": "quarantine", "reason": reason, "rule": rule, "clause": clause})
+        self._store.append(
+            flow_id,
+            "escalation",
+            STEWARD,
+            {"stage": "quarantine", "reason": reason, "rule": rule, "clause": clause},
+        )
         return StewardAction(flow_id, "quarantine", reason, rule, clause)
 
     def rollback(self, flow_id: str, to_seq: int) -> StewardAction:
@@ -90,11 +102,12 @@ class Steward:
         last_seq = events[-1].seq if events else -1
         if not (0 <= to_seq <= last_seq):
             raise InvalidRollback(
-                f"seq {to_seq} is not a valid event boundary for {flow_id!r} (0..{last_seq})")
-        self._store.append(flow_id, "state", STEWARD,
-                           {"stage": "rollback", "to_seq": to_seq})
-        return StewardAction(flow_id, "rollback", f"rolled back to seq {to_seq}",
-                             rule="R8", clause="Art. 6.2")
+                f"seq {to_seq} is not a valid event boundary for {flow_id!r} (0..{last_seq})"
+            )
+        self._store.append(flow_id, "state", STEWARD, {"stage": "rollback", "to_seq": to_seq})
+        return StewardAction(
+            flow_id, "rollback", f"rolled back to seq {to_seq}", rule="R8", clause="Art. 6.2"
+        )
 
     def is_quarantined(self, flow_id: str) -> bool:
         """Quarantine holds until the STEWARD restores a known-good checkpoint. Only the
@@ -111,7 +124,7 @@ class Steward:
                 quarantined = False
         return quarantined
 
-    def _cap_breach(self, cost: Any, budget_cap: Any) -> Optional[str]:
+    def _cap_breach(self, cost: Any, budget_cap: Any) -> str | None:
         """Rule C2/R7: report the first budget dimension the running cost has reached, or None.
         Checks every dimension of the BudgetCap, not just compute (Build-Spec §3.2)."""
         if budget_cap is None:
@@ -123,7 +136,10 @@ class Steward:
             return f"compute {cost.compute} >= {budget_cap.compute}"
         if cost.wall_clock_ms >= budget_cap.wall_clock_ms:
             return f"wall_clock_ms {cost.wall_clock_ms} >= {budget_cap.wall_clock_ms}"
-        if (budget_cap.human_time_ms is not None and cost.human_time_ms is not None
-                and cost.human_time_ms >= budget_cap.human_time_ms):
+        if (
+            budget_cap.human_time_ms is not None
+            and cost.human_time_ms is not None
+            and cost.human_time_ms >= budget_cap.human_time_ms
+        ):
             return f"human_time_ms {cost.human_time_ms} >= {budget_cap.human_time_ms}"
         return None

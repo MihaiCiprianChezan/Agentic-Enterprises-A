@@ -9,6 +9,7 @@ It is a pure interpretation layer over existing read APIs (`DurableEventStore.re
 `compute_hash`, `total_cost`, the effects ledger). It changes no cell/plane/governance code, and
 reads the durable event plane — NOT the in-memory trace store, which does not survive the process.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,8 +17,8 @@ import os
 import pathlib
 import sqlite3
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 from cell.planes.memory import CostDelta, DurableEventStore, Event, compute_hash
 from cell.planes.observability import total_cost
@@ -26,30 +27,32 @@ from cell.planes.observability import total_cost
 @dataclass
 class EffectView:
     """One performed external effect, as seen from the event plane."""
+
     label: str
     effect_kind: str
-    result: Optional[str]
-    once_confirmed: Optional[bool]   # None when no ledger was consulted
+    result: str | None
+    once_confirmed: bool | None  # None when no ledger was consulted
 
 
 @dataclass
 class RunSummary:
     flow_id: str
-    verdict: str                     # PASS | RETURN | BLOCKED | PAUSED | UNKNOWN
+    verdict: str  # PASS | RETURN | BLOCKED | PAUSED | UNKNOWN
     execute_attempts: int
-    rederivations: int               # specify→decompose→govern rounds (count of specify decisions)
+    rederivations: int  # specify→decompose→govern rounds (count of specify decisions)
     gov_allow: int
     gov_block: int
     effects: list
     total_cost: CostDelta
     window: tuple
     chain_intact: bool
-    chain_broken_at: Optional[int]
+    chain_broken_at: int | None
     actors: list
     event_count: int
 
 
 # -- chain integrity ----------------------------------------------------------
+
 
 def verify_chain(events) -> tuple:
     """Recompute every link with the store's own hash function — a true tamper-evidence check.
@@ -63,6 +66,7 @@ def verify_chain(events) -> tuple:
 
 
 # -- interpretation -----------------------------------------------------------
+
 
 def _is_execute(ev: Event) -> bool:
     return ev.kind == "action" and "artifact_ref" in ev.payload
@@ -93,7 +97,7 @@ def _actors(events) -> list:
     return seen
 
 
-def summarize(events, confirm_once: Optional[Callable[[str], Optional[bool]]] = None) -> RunSummary:
+def summarize(events, confirm_once: Callable[[str], bool | None] | None = None) -> RunSummary:
     """Derive the at-a-glance run summary from the durable events. `confirm_once`, if given, maps an
     effect's idempotency key to its exactly-once status (True/False), or None if unknown."""
     flow_id = events[0].flow_id if events else ""
@@ -103,18 +107,22 @@ def summarize(events, confirm_once: Optional[Callable[[str], Optional[bool]]] = 
         if _is_effect(e):
             key = e.payload.get("idempotency_key")
             once = confirm_once(key) if (confirm_once is not None and key is not None) else None
-            effects.append(EffectView(
-                label=e.payload.get("action_class") or e.payload.get("action_id") or "effect",
-                effect_kind=e.payload.get("effect_kind", ""),
-                result=e.payload.get("result_digest"),
-                once_confirmed=once))
+            effects.append(
+                EffectView(
+                    label=e.payload.get("action_class") or e.payload.get("action_id") or "effect",
+                    effect_kind=e.payload.get("effect_kind", ""),
+                    result=e.payload.get("result_digest"),
+                    once_confirmed=once,
+                )
+            )
     chain_ok, broken_at = verify_chain(events)
     return RunSummary(
         flow_id=flow_id,
         verdict=_verdict(events),
         execute_attempts=sum(1 for e in events if _is_execute(e)),
-        rederivations=sum(1 for e in events
-                          if e.kind == "decision" and e.payload.get("stage") == "specify"),
+        rederivations=sum(
+            1 for e in events if e.kind == "decision" and e.payload.get("stage") == "specify"
+        ),
         gov_allow=sum(1 for e in gov if e.payload.get("decision") == "allow"),
         gov_block=sum(1 for e in gov if e.payload.get("decision") == "block"),
         effects=effects,
@@ -195,6 +203,7 @@ def key_fact(ev: Event) -> str:
 
 # -- formatting ---------------------------------------------------------------
 
+
 def _fmt_cost(c: CostDelta) -> str:
     out = f"{c.compute:.0f} {c.units}, {c.wall_clock_ms}ms wall"
     if c.human_time_ms is not None:
@@ -208,9 +217,11 @@ def format_header(s: RunSummary, db: str) -> str:
     if w0 and w1:
         window = f"{w0.strftime('%H:%M:%S')} → {w1.strftime('%H:%M:%S')} ({(w1 - w0).total_seconds():.0f}s)"
     chain = "✓ intact" if s.chain_intact else f"✗ BROKEN at seq {s.chain_broken_at}"
-    return (f"flow: {s.flow_id}     db: {db}\n"
-            f"actors: {' · '.join(s.actors)}\n"
-            f"events: {s.event_count}     window: {window}     chain: {chain}")
+    return (
+        f"flow: {s.flow_id}     db: {db}\n"
+        f"actors: {' · '.join(s.actors)}\n"
+        f"events: {s.event_count}     window: {window}     chain: {chain}"
+    )
 
 
 def format_timeline(events) -> str:
@@ -243,12 +254,19 @@ def format_summary(s: RunSummary) -> str:
     else:
         lines.append("effects: none")
     lines.append(f"total cost: {_fmt_cost(s.total_cost)}")
-    lines.append("chain: " + ("✓ intact (tamper-evident)"
-                              if s.chain_intact else f"✗ BROKEN at seq {s.chain_broken_at}"))
+    lines.append(
+        "chain: "
+        + (
+            "✓ intact (tamper-evident)"
+            if s.chain_intact
+            else f"✗ BROKEN at seq {s.chain_broken_at}"
+        )
+    )
     return "\n".join(lines)
 
 
 # -- CLI ----------------------------------------------------------------------
+
 
 def _connect_ro(db: str) -> sqlite3.Connection:
     """Open the state DB strictly read-only — a tamper-evidence inspector must never write to (or
@@ -261,7 +279,8 @@ def _connect_ro(db: str) -> sqlite3.Connection:
 
 def _read_events(conn: sqlite3.Connection, flow_id: str) -> list:
     rows = conn.execute(
-        "SELECT * FROM events WHERE flow_id = ? ORDER BY seq", (flow_id,)).fetchall()
+        "SELECT * FROM events WHERE flow_id = ? ORDER BY seq", (flow_id,)
+    ).fetchall()
     return [DurableEventStore._row_to_event(r) for r in rows]
 
 
@@ -270,12 +289,13 @@ def _list_flows(conn: sqlite3.Connection) -> list:
     return [r[0] for r in rows]
 
 
-def _effect_confirmed(conn: sqlite3.Connection, key: str) -> Optional[bool]:
+def _effect_confirmed(conn: sqlite3.Connection, key: str) -> bool | None:
     try:
         row = conn.execute(
-            "SELECT status FROM effects WHERE idempotency_key = ?", (key,)).fetchone()
+            "SELECT status FROM effects WHERE idempotency_key = ?", (key,)
+        ).fetchone()
     except sqlite3.Error:
-        return None   # no effects ledger in this DB — degrade gracefully
+        return None  # no effects ledger in this DB — degrade gracefully
     return None if row is None else (row["status"] == "completed")
 
 
@@ -333,8 +353,10 @@ def main(argv=None) -> int:
         if full:
             print("\n--- full payloads ---")
             for e in events:
-                print(f"#{e.seq} {e.kind}: "
-                      + json.dumps(e.payload, indent=2, sort_keys=True, default=str))
+                print(
+                    f"#{e.seq} {e.kind}: "
+                    + json.dumps(e.payload, indent=2, sort_keys=True, default=str)
+                )
         return 0
     finally:
         conn.close()

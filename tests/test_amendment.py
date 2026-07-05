@@ -1,6 +1,7 @@
 """M9a — the constitutional amendment for version suspension. The Board ratifies governed content
 (the suspension policy) onto the Board-acts trail; nothing reads it yet (the Auditor is 9b/9c).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -22,12 +23,16 @@ def _board(store) -> AutonomyBoard:
 def test_board_ratifies_a_constitutional_amendment_onto_the_board_trail():
     store = InMemoryEventStore()
     content = {"response_sla_hours": 24, "danger": "safety-breach-only"}
-    returned = _board(store).ratify_amendment("Article 11 — Version audit & suspension", content, BOARD)
+    returned = _board(store).ratify_amendment(
+        "Article 11 — Version audit & suspension", content, BOARD
+    )
     assert returned == content
     acts = [e for e in store.read(BOARD_TRAIL) if e.payload.get("stage") == "amendment"]
     assert acts and acts[0].payload["content"] == content
     assert acts[0].payload["article"].startswith("Article 11")
-    assert store.verify_chain(BOARD_TRAIL) is True   # on the tamper-evident Board trail (Art 10.2/R12)
+    assert (
+        store.verify_chain(BOARD_TRAIL) is True
+    )  # on the tamper-evident Board trail (Art 10.2/R12)
 
 
 def test_a_ratified_amendment_is_immutable_against_later_mutation():
@@ -36,19 +41,22 @@ def test_a_ratified_amendment_is_immutable_against_later_mutation():
     store = InMemoryEventStore()
     content = {"response_sla_hours": 24}
     _board(store).ratify_amendment("Article 11", content, BOARD)
-    content["response_sla_hours"] = 999                  # mutate the caller's dict after ratifying
+    content["response_sla_hours"] = 999  # mutate the caller's dict after ratifying
     assert store.verify_chain(BOARD_TRAIL) is True
     act = [e for e in store.read(BOARD_TRAIL) if e.payload.get("stage") == "amendment"][0]
-    assert act.payload["content"]["response_sla_hours"] == 24   # the recorded act is frozen
+    assert act.payload["content"]["response_sla_hours"] == 24  # the recorded act is frozen
 
 
 def test_a_non_board_actor_cannot_ratify_and_the_refusal_is_logged():
     store = InMemoryEventStore()
     with pytest.raises(AmendmentRefused):
         _board(store).ratify_amendment("Article 11", {"x": 1}, NOT_BOARD)
-    blocks = [e for e in store.read(BOARD_TRAIL)
-              if e.payload.get("stage") == "amendment" and e.payload.get("decision") == "block"]
-    assert blocks   # the refusal is on the audit trail (invariant #10)
+    blocks = [
+        e
+        for e in store.read(BOARD_TRAIL)
+        if e.payload.get("stage") == "amendment" and e.payload.get("decision") == "block"
+    ]
+    assert blocks  # the refusal is on the audit trail (invariant #10)
 
 
 def test_suspension_policy_declares_the_full_governed_shape():

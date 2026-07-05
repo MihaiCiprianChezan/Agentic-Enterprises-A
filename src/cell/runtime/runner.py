@@ -15,8 +15,9 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional, Protocol
+from typing import Protocol
 
 from cell.planes.memory import CostDelta
 
@@ -27,10 +28,10 @@ class RunResult:
     stdout: str
     stderr: str
     timed_out: bool = False
-    cost: Optional[CostDelta] = None   # the runtime's reported usage (tokens), if its spec parses it
+    cost: CostDelta | None = None  # the runtime's reported usage (tokens), if its spec parses it
 
 
-def _claude_usage(stdout: str) -> Optional[CostDelta]:
+def _claude_usage(stdout: str) -> CostDelta | None:
     """Parse token usage from `claude --output-format json`. Best-effort: returns None on any parse
     failure (the run still works on wall-clock). The exact field path is live-verified on first use."""
     try:
@@ -65,27 +66,32 @@ class CliAgentSpec:
     let an unattended run proceed without hanging on approval, and the instruction-file name.
     The prompt is delivered on stdin (not as an argv element), so a multi-line prompt can't be
     mangled by a Windows .CMD shim and never appears in the process arg list."""
-    argv_template: list[str]          # the headless command + subcommand (no prompt — it's stdin)
-    permission_args: list[str]        # appended; let an unattended run proceed (don't over-permit)
-    instruction_file: str             # CLAUDE.md / AGENTS.md / .github/copilot-instructions.md
-    usage_parser: Optional[Callable[[str], Optional[CostDelta]]] = None  # stdout -> token cost
+
+    argv_template: list[str]  # the headless command + subcommand (no prompt — it's stdin)
+    permission_args: list[str]  # appended; let an unattended run proceed (don't over-permit)
+    instruction_file: str  # CLAUDE.md / AGENTS.md / .github/copilot-instructions.md
+    usage_parser: Callable[[str], CostDelta | None] | None = None  # stdout -> token cost
 
     @classmethod
-    def claude_code(cls) -> "CliAgentSpec":
+    def claude_code(cls) -> CliAgentSpec:
         # --output-format json so token usage can be parsed back into the cost (see _claude_usage).
-        return cls(["claude", "-p"], ["--permission-mode", "acceptEdits", "--output-format", "json"],
-                   "CLAUDE.md", usage_parser=_claude_usage)
+        return cls(
+            ["claude", "-p"],
+            ["--permission-mode", "acceptEdits", "--output-format", "json"],
+            "CLAUDE.md",
+            usage_parser=_claude_usage,
+        )
 
     @classmethod
-    def codex(cls) -> "CliAgentSpec":
+    def codex(cls) -> CliAgentSpec:
         return cls(["codex", "exec"], ["--full-auto"], "AGENTS.md")
 
     @classmethod
-    def gemini(cls) -> "CliAgentSpec":
+    def gemini(cls) -> CliAgentSpec:
         return cls(["gemini", "-p"], ["--yolo"], "GEMINI.md")
 
     @classmethod
-    def pi(cls) -> "CliAgentSpec":
+    def pi(cls) -> CliAgentSpec:
         return cls(["pi"], [], "AGENTS.md")
 
 
@@ -118,21 +124,29 @@ class CliAgentRunner:
             # argument parsing (which would silently drop the permission flags after it). Encoding
             # is pinned to UTF-8 so a non-ASCII prompt is stable across platforms (Windows text
             # mode would otherwise use a locale codepage like cp1252).
-            proc = subprocess.run(argv, cwd=cwd, input=prompt, capture_output=True,
-                                  encoding="utf-8", timeout=self.timeout)
+            proc = subprocess.run(
+                argv,
+                cwd=cwd,
+                input=prompt,
+                capture_output=True,
+                encoding="utf-8",
+                timeout=self.timeout,
+            )
         except FileNotFoundError as exc:
             raise RunnerError(f"CLI agent binary not found: {argv[0]!r}") from exc
         except subprocess.TimeoutExpired as exc:
-            return RunResult(returncode=124, stdout=exc.stdout or "", stderr=exc.stderr or "",
-                             timed_out=True)
+            return RunResult(
+                returncode=124, stdout=exc.stdout or "", stderr=exc.stderr or "", timed_out=True
+            )
         cost = None
         if proc.returncode == 0 and self.spec.usage_parser is not None:
             try:
                 cost = self.spec.usage_parser(proc.stdout or "")
             except Exception:
-                cost = None   # usage parsing is best-effort — it must never fail a successful run
-        return RunResult(returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr,
-                         cost=cost)
+                cost = None  # usage parsing is best-effort — it must never fail a successful run
+        return RunResult(
+            returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr, cost=cost
+        )
 
 
 class FakeRunner:

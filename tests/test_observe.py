@@ -3,35 +3,75 @@
 Offline and deterministic: build a known flow in a temp DurableEventStore, then assert the
 inspector interprets it correctly. No network, no real gh, no LLM.
 """
+
 from __future__ import annotations
 
 from cell.domain.objects import ActorRef
+from cell.observe import format_summary, format_timeline, main, summarize, verify_chain
 from cell.planes.memory import CostDelta, DurableEventStore
-from cell.observe import summarize, verify_chain, format_timeline, format_summary, main
 
 
 def _build_passing_flow(path: str, flow_id: str = "f1") -> DurableEventStore:
     """A faithful one-attempt happy path: specify -> decompose -> govern -> execute -> verdict
     pass -> perform the delivery effect."""
     store = DurableEventStore(path)
-    D, O, E, V = (ActorRef("Director", "ref"), ActorRef("Orchestrator", "ref"),
-                  ActorRef("Executor", "real-cli"), ActorRef("Verifier", "ref"))
+    D, ORC, E, V = (
+        ActorRef("Director", "ref"),
+        ActorRef("Orchestrator", "ref"),
+        ActorRef("Executor", "real-cli"),
+        ActorRef("Verifier", "ref"),
+    )
     store.append(flow_id, "decision", D, {"stage": "specify", "goal_id": "g1", "in_purpose": True})
-    store.append(flow_id, "decision", O, {"stage": "decompose", "work_items": ["wi1"]})
-    store.append(flow_id, "governance", E,
-                 {"stage": "govern", "decision": "allow", "authority_level": "L2",
-                  "action_class": "CLASS_OWN_WRITE", "reason": "within ceiling"})
-    store.append(flow_id, "action", E,
-                 {"stage": "execute", "output_id": "o1", "work_item_id": "wi1", "attempt": 1,
-                  "artifact_ref": "branch:cell/slice@a1b2c3d"},
-                 cost=CostDelta(compute=1200.0))
-    store.append(flow_id, "verdict", V,
-                 {"stage": "verify", "verdict_id": "v1", "output_id": "o1", "attempt": 1,
-                  "decision": "pass"})
-    store.append(flow_id, "action", E,
-                 {"action_id": "deliver-f1-cell/slice", "action_class": "visible_output",
-                  "effect_kind": "irreversible", "idempotency_key": "k-ab12cd34",
-                  "result_digest": "https://github.com/x/y/pull/1"})
+    store.append(flow_id, "decision", ORC, {"stage": "decompose", "work_items": ["wi1"]})
+    store.append(
+        flow_id,
+        "governance",
+        E,
+        {
+            "stage": "govern",
+            "decision": "allow",
+            "authority_level": "L2",
+            "action_class": "CLASS_OWN_WRITE",
+            "reason": "within ceiling",
+        },
+    )
+    store.append(
+        flow_id,
+        "action",
+        E,
+        {
+            "stage": "execute",
+            "output_id": "o1",
+            "work_item_id": "wi1",
+            "attempt": 1,
+            "artifact_ref": "branch:cell/slice@a1b2c3d",
+        },
+        cost=CostDelta(compute=1200.0),
+    )
+    store.append(
+        flow_id,
+        "verdict",
+        V,
+        {
+            "stage": "verify",
+            "verdict_id": "v1",
+            "output_id": "o1",
+            "attempt": 1,
+            "decision": "pass",
+        },
+    )
+    store.append(
+        flow_id,
+        "action",
+        E,
+        {
+            "action_id": "deliver-f1-cell/slice",
+            "action_class": "visible_output",
+            "effect_kind": "irreversible",
+            "idempotency_key": "k-ab12cd34",
+            "result_digest": "https://github.com/x/y/pull/1",
+        },
+    )
     return store
 
 
@@ -40,7 +80,7 @@ def test_summarize_reports_pass_attempts_rederivations_governance_and_chain(tmp_
     s = summarize(store.read("f1"))
     assert s.verdict == "PASS"
     assert s.execute_attempts == 1
-    assert s.rederivations == 1            # one specify decision
+    assert s.rederivations == 1  # one specify decision
     assert s.gov_allow == 1 and s.gov_block == 0
     assert s.chain_intact is True
     assert len(s.effects) == 1
@@ -60,9 +100,18 @@ def test_timeline_shows_the_key_facts(tmp_path):
 
 def test_timeline_shows_the_optimizer_route_decision(tmp_path):
     store = DurableEventStore(str(tmp_path / "state.db"))
-    store.append("f", "decision", ActorRef("Optimizer", "ref"),
-                 {"stage": "route", "work_item_id": "wi", "chosen": "haiku-light", "floor": 1,
-                  "costs": {"haiku-light": 1.0, "opus-strong": 20.0}})
+    store.append(
+        "f",
+        "decision",
+        ActorRef("Optimizer", "ref"),
+        {
+            "stage": "route",
+            "work_item_id": "wi",
+            "chosen": "haiku-light",
+            "floor": 1,
+            "costs": {"haiku-light": 1.0, "opus-strong": 20.0},
+        },
+    )
     out = format_timeline(store.read("f"))
     assert "route → haiku-light (floor 1)" in out
 
@@ -70,10 +119,18 @@ def test_timeline_shows_the_optimizer_route_decision(tmp_path):
 def test_timeline_shows_version_registry_events(tmp_path):
     store = DurableEventStore(str(tmp_path / "state.db"))
     R = ActorRef("Registry", "ref")
-    store.append("__versions__", "version", R,
-                 {"stage": "register", "role": "Executor", "version": "exec-v2", "status": "active"})
-    store.append("__versions__", "version", R,
-                 {"stage": "status", "version": "exec-v2", "status": "suspended"})
+    store.append(
+        "__versions__",
+        "version",
+        R,
+        {"stage": "register", "role": "Executor", "version": "exec-v2", "status": "active"},
+    )
+    store.append(
+        "__versions__",
+        "version",
+        R,
+        {"stage": "status", "version": "exec-v2", "status": "suspended"},
+    )
     out = format_timeline(store.read("__versions__"))
     assert "register Executor exec-v2 (active)" in out
     assert "status exec-v2 → suspended" in out
@@ -91,8 +148,12 @@ def test_timeline_shows_breaker_acts(tmp_path):
 
 def test_timeline_shows_auditor_ratings(tmp_path):
     store = DurableEventStore(str(tmp_path / "state.db"))
-    store.append("__audit__", "audit", ActorRef("Auditor", "ref"),
-                 {"stage": "rating", "version": "cheap", "verdict": "healthy", "pass_rate": 1.0})
+    store.append(
+        "__audit__",
+        "audit",
+        ActorRef("Auditor", "ref"),
+        {"stage": "rating", "version": "cheap", "verdict": "healthy", "pass_rate": 1.0},
+    )
     out = format_timeline(store.read("__audit__"))
     assert "rating cheap: healthy" in out
 
@@ -100,14 +161,17 @@ def test_timeline_shows_auditor_ratings(tmp_path):
 def test_tampered_payload_breaks_the_chain_and_is_surfaced(tmp_path):
     import json as _json
     import sqlite3
+
     db = str(tmp_path / "state.db")
     store = _build_passing_flow(db)
     assert verify_chain(store.read("f1")) == (True, None)
     store.close()  # release the write lock before tampering
     # Rewrite the execute event's payload (seq 3) so its stored hash no longer matches.
     conn = sqlite3.connect(db)
-    conn.execute("UPDATE events SET payload = ? WHERE flow_id = 'f1' AND seq = 3",
-                 (_json.dumps({"stage": "execute", "artifact_ref": "branch:EVIL"}),))
+    conn.execute(
+        "UPDATE events SET payload = ? WHERE flow_id = 'f1' AND seq = 3",
+        (_json.dumps({"stage": "execute", "artifact_ref": "branch:EVIL"}),),
+    )
     conn.commit()
     conn.close()
     tampered = DurableEventStore(db).read("f1")
@@ -138,9 +202,14 @@ def test_cli_missing_db_exits_2(tmp_path):
 def test_observe_does_not_write_to_the_db(tmp_path):
     # A tamper-evidence inspector must be truly read-only: opening + reading must not alter a byte.
     import hashlib
+
     db = str(tmp_path / "state.db")
     _build_passing_flow(db).close()
-    digest = lambda: hashlib.sha256(open(db, "rb").read()).hexdigest()
+
+    def digest():
+        with open(db, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+
     before = digest()
     assert main([db, "f1"]) == 0
     assert digest() == before
@@ -149,8 +218,12 @@ def test_observe_does_not_write_to_the_db(tmp_path):
 def test_governance_with_level_key_renders_the_level(tmp_path):
     # RuleSetGovernance logs "level"; the handbrake gate logs "authority_level". Handle both.
     store = DurableEventStore(str(tmp_path / "state.db"))
-    store.append("f", "governance", ActorRef("Executor", "ref"),
-                 {"decision": "allow", "level": "L2", "action_class": "CLASS_OWN_WRITE"})
+    store.append(
+        "f",
+        "governance",
+        ActorRef("Executor", "ref"),
+        {"decision": "allow", "level": "L2", "action_class": "CLASS_OWN_WRITE"},
+    )
     line = format_timeline(store.read("f"))
     assert "ALLOW L2 CLASS_OWN_WRITE" in line
     assert "LNone" not in line

@@ -6,12 +6,15 @@ flow records each version and its status; **version_stats** scores each version 
 version — see handbrake._assign). The Auditor (M9) will rate versions from this signal and set
 status; this module supplies the substrate, not the ratings.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Literal, Optional
+from typing import Literal
 
-VERSIONS_FLOW = "__versions__"   # reserved flow: the registry lives in the event plane (invariant #5)
+VERSIONS_FLOW = (
+    "__versions__"  # reserved flow: the registry lives in the event plane (invariant #5)
+)
 
 VersionStatus = Literal["active", "rolled_back", "suspended"]
 
@@ -26,7 +29,7 @@ class VersionRecord:
     role: str
     version: str
     status: VersionStatus
-    variant_of: Optional[str] = None
+    variant_of: str | None = None
 
 
 class VersionRegistry:
@@ -36,14 +39,27 @@ class VersionRegistry:
     def __init__(self, store) -> None:
         self.store = store
 
-    def register(self, role: str, version: str, variant_of: Optional[str] = None) -> None:
-        self.store.append(VERSIONS_FLOW, "version", REGISTRY_ACTOR,
-                          {"stage": "register", "role": role, "version": version,
-                           "variant_of": variant_of, "status": "active"})
+    def register(self, role: str, version: str, variant_of: str | None = None) -> None:
+        self.store.append(
+            VERSIONS_FLOW,
+            "version",
+            REGISTRY_ACTOR,
+            {
+                "stage": "register",
+                "role": role,
+                "version": version,
+                "variant_of": variant_of,
+                "status": "active",
+            },
+        )
 
     def set_status(self, version: str, status: VersionStatus) -> None:
-        self.store.append(VERSIONS_FLOW, "version", REGISTRY_ACTOR,
-                          {"stage": "status", "version": version, "status": status})
+        self.store.append(
+            VERSIONS_FLOW,
+            "version",
+            REGISTRY_ACTOR,
+            {"stage": "status", "version": version, "status": status},
+        )
 
     def records(self) -> dict:
         """Current state folded from the `__versions__` events (latest wins). Keyed by
@@ -56,9 +72,13 @@ class VersionRegistry:
                 continue
             if p.get("stage") == "register":
                 key = (p.get("role", "?"), v)
-                out[key] = VersionRecord(role=key[0], version=v,
-                                         status=p.get("status", "active"), variant_of=p.get("variant_of"))
-            elif p.get("stage") == "status":   # applies to every record sharing this version
+                out[key] = VersionRecord(
+                    role=key[0],
+                    version=v,
+                    status=p.get("status", "active"),
+                    variant_of=p.get("variant_of"),
+                )
+            elif p.get("stage") == "status":  # applies to every record sharing this version
                 for key, rec in list(out.items()):
                     if rec.version == v:
                         out[key] = replace(rec, status=p["status"])
@@ -79,7 +99,9 @@ class VersionStat:
     runs: int = 0
     passes: int = 0
     returns: int = 0
-    mean_cost: float = 0.0   # mean execute `compute` over the runs that reported cost (0 if none did)
+    mean_cost: float = (
+        0.0  # mean execute `compute` over the runs that reported cost (0 if none did)
+    )
 
 
 def _version_of(execute_event) -> str:
@@ -92,13 +114,13 @@ def version_stats(events) -> dict[str, VersionStat]:
     `execute` as a run for its version, joins each `verdict` to the version that produced its output,
     and folds the execute `compute` cost. (No per-version block count: a gate block prevents the
     version from running, so it cannot be attributed to one.)"""
-    by_output: dict[str, str] = {}            # output_id -> version that produced it
-    costs: dict[str, list[float]] = {}        # version -> execute compute samples (cost-bearing runs)
+    by_output: dict[str, str] = {}  # output_id -> version that produced it
+    costs: dict[str, list[float]] = {}  # version -> execute compute samples (cost-bearing runs)
     stats: dict[str, VersionStat] = {}
     for e in events:
         if e.payload.get("stage") == "execute":
             ver = _version_of(e)
-            stats.setdefault(ver, VersionStat()).runs += 1     # every execute is a run, cost or not
+            stats.setdefault(ver, VersionStat()).runs += 1  # every execute is a run, cost or not
             oid = e.payload.get("output_id")
             if oid is not None:
                 by_output[oid] = ver

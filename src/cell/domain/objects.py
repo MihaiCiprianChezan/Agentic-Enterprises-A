@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:  # CostDelta lives in planes.memory, which imports this module — avoid the cycle
     from cell.planes.memory import CostDelta
@@ -22,10 +22,11 @@ Level = Literal["L0", "L1", "L2", "L3"]
 @dataclass(frozen=True)
 class ActorRef:
     """Who/what acted. `version` is the version-registry stub (Build-Spec §1, §2.4)."""
+
     role: str
     version: str
     mode: Literal["agent", "human"] = "agent"
-    office: Optional[str] = None  # set only when a human Office-holder is impersonating
+    office: str | None = None  # set only when a human Office-holder is impersonating
 
 
 @dataclass(frozen=True)
@@ -46,11 +47,12 @@ class RiskFlag:
 class BudgetCap:
     compute: float
     wall_clock_ms: int
-    human_time_ms: Optional[int] = None
+    human_time_ms: int | None = None
     units: str = "tokens"
 
 
 # --- the five wire objects (Build-Spec §1) ----------------------------------
+
 
 @dataclass
 class Ticket:
@@ -71,7 +73,7 @@ class Goal:
     budget_cap: BudgetCap
     created_by: ActorRef
     created_at: datetime
-    in_purpose: bool = True            # Director boundary check (Constitution Art. 1.3, 2.1)
+    in_purpose: bool = True  # Director boundary check (Constitution Art. 1.3, 2.1)
     constraints: list[str] = field(default_factory=list)
     risk_flags: list[RiskFlag] = field(default_factory=list)
 
@@ -81,7 +83,7 @@ class Breakpoint:
     id: str
     position: Literal["before", "after"]
     kind: Literal["static", "dynamic"]
-    condition: Optional[str] = None
+    condition: str | None = None
 
 
 @dataclass
@@ -101,19 +103,19 @@ class WorkItem:
 class Output:
     id: str
     work_item_id: str
-    artifact_ref: str                  # a handle to the artifact, never the live effect itself
+    artifact_ref: str  # a handle to the artifact, never the live effect itself
     produced_by: ActorRef
     trace_ref: str
     produced_at: datetime
     side_effects: list[str] = field(default_factory=list)  # idempotency keys; see effects.wrapper
-    cost: Optional["CostDelta"] = None   # what producing it cost (e.g. a runtime's token usage)
+    cost: CostDelta | None = None  # what producing it cost (e.g. a runtime's token usage)
 
 
 @dataclass(frozen=True)
 class CriterionScore:
     criterion_id: str
     result: Literal["met", "unmet", "unclear"]
-    note: Optional[str] = None
+    note: str | None = None
 
 
 @dataclass
@@ -123,5 +125,5 @@ class Verdict:
     decision: Literal["pass", "return", "block"]
     scores: list[CriterionScore]
     reason: str
-    verified_by: ActorRef              # R5 requires verified_by != Output.produced_by
+    verified_by: ActorRef  # R5 requires verified_by != Output.produced_by
     verified_at: datetime

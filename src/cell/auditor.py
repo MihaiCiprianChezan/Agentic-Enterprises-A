@@ -8,11 +8,11 @@ Steward-quarantined, or hit a governance block); a **catastrophic quality collap
 (alert-only), never danger. It does NOT suspend, set status, modify, operate, or direct — suspension
 is 9c (the breaker), and reinstatement is never an agent's to do.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from cell.domain.objects import ActorRef
 from cell.planes.governance import SUSPENSION_POLICY
@@ -29,17 +29,19 @@ class VersionRating:
     runs: int
     pass_rate: float
     mean_cost: float
-    verdict: str                       # unproven | healthy | regressed | dangerous
-    vs_predecessor: Optional[str] = None   # "better" | "worse" | None
+    verdict: str  # unproven | healthy | regressed | dangerous
+    vs_predecessor: str | None = None  # "better" | "worse" | None
     reasons: list = field(default_factory=list)
 
 
 @dataclass
 class BreakerResult:
-    suspended: list = field(default_factory=list)        # versions suspended this pass
-    escalated: list = field(default_factory=list)        # dangerous but rate-limited → escalated, not suspended
-    sla_opened: list = field(default_factory=list)       # critical suspensions that opened a 24h SLA
-    breakglass: list = field(default_factory=list)       # SLAs that expired while still suspended
+    suspended: list = field(default_factory=list)  # versions suspended this pass
+    escalated: list = field(
+        default_factory=list
+    )  # dangerous but rate-limited → escalated, not suspended
+    sla_opened: list = field(default_factory=list)  # critical suspensions that opened a 24h SLA
+    breakglass: list = field(default_factory=list)  # SLAs that expired while still suspended
 
 
 class Auditor:
@@ -54,7 +56,9 @@ class Auditor:
         stats = version_stats(events)
         danger_flows = self._danger_flows(events)
         exec_flows = self._exec_flows(events)
-        exec_roles = self._exec_roles(events)   # the role that actually ran each version (authoritative)
+        exec_roles = self._exec_roles(
+            events
+        )  # the role that actually ran each version (authoritative)
         min_runs = SUSPENSION_POLICY["collapse_alert_min_runs"]
         floor = SUSPENSION_POLICY["collapse_alert_pass_rate"]
 
@@ -72,9 +76,15 @@ class Auditor:
             vs = None
             if pred and pred in stats and stats[pred].runs:
                 pred_rate = stats[pred].passes / stats[pred].runs
-                vs = "worse" if pass_rate < pred_rate else ("better" if pass_rate > pred_rate else None)
+                vs = (
+                    "worse"
+                    if pass_rate < pred_rate
+                    else ("better" if pass_rate > pred_rate else None)
+                )
                 if vs == "worse":
-                    reasons.append(f"pass_rate {pass_rate:.2f} < predecessor {pred} {pred_rate:.2f}")
+                    reasons.append(
+                        f"pass_rate {pass_rate:.2f} < predecessor {pred} {pred_rate:.2f}"
+                    )
 
             collapsed = st.runs >= min_runs and pass_rate < floor
             if collapsed:
@@ -92,8 +102,15 @@ class Auditor:
                 verdict = "healthy"
 
             ratings[version] = VersionRating(
-                version=version, role=role, runs=st.runs, pass_rate=pass_rate,
-                mean_cost=st.mean_cost, verdict=verdict, vs_predecessor=vs, reasons=reasons)
+                version=version,
+                role=role,
+                runs=st.runs,
+                pass_rate=pass_rate,
+                mean_cost=st.mean_cost,
+                verdict=verdict,
+                vs_predecessor=vs,
+                reasons=reasons,
+            )
         return ratings
 
     def leaderboard(self, role: str) -> list:
@@ -105,27 +122,46 @@ class Auditor:
     def report(self) -> dict:
         ratings = self.rate()
         for r in ratings.values():
-            self.store.append(AUDIT_TRAIL, "audit", AUDITOR_ACTOR, {
-                "stage": "rating", "version": r.version, "role": r.role, "verdict": r.verdict,
-                "pass_rate": round(r.pass_rate, 3), "runs": r.runs, "mean_cost": r.mean_cost,
-                "reasons": list(r.reasons)})
+            self.store.append(
+                AUDIT_TRAIL,
+                "audit",
+                AUDITOR_ACTOR,
+                {
+                    "stage": "rating",
+                    "version": r.version,
+                    "role": r.role,
+                    "verdict": r.verdict,
+                    "pass_rate": round(r.pass_rate, 3),
+                    "runs": r.runs,
+                    "mean_cost": r.mean_cost,
+                    "reasons": list(r.reasons),
+                },
+            )
             if r.verdict == "regressed":
-                self.store.append(AUDIT_TRAIL, "audit", AUDITOR_ACTOR, {
-                    "stage": "regression", "version": r.version, "reasons": list(r.reasons)})
+                self.store.append(
+                    AUDIT_TRAIL,
+                    "audit",
+                    AUDITOR_ACTOR,
+                    {"stage": "regression", "version": r.version, "reasons": list(r.reasons)},
+                )
             elif r.verdict == "dangerous":
-                self.store.append(AUDIT_TRAIL, "audit", AUDITOR_ACTOR, {
-                    "stage": "danger", "version": r.version, "reasons": list(r.reasons)})
+                self.store.append(
+                    AUDIT_TRAIL,
+                    "audit",
+                    AUDITOR_ACTOR,
+                    {"stage": "danger", "version": r.version, "reasons": list(r.reasons)},
+                )
         return ratings
 
     # -- the breaker (the one governed ACTION — M9c) --------------------------
 
-    def enforce(self, now: Optional[datetime] = None) -> BreakerResult:
+    def enforce(self, now: datetime | None = None) -> BreakerResult:
         """Suspend versions rated `dangerous`, bounded by the governed `SUSPENSION_POLICY`
         (Constitution Art 11): rate-limited (excess dangerous are escalated, not auto-suspended — no
         cascade); a critical suspension (no other active version of the role) opens the 24h SLA; an
         expired SLA still suspended escalates to break-glass. It NEVER reinstates — un-pause is a
         human/Steward act. Deterministic under an injected `now`."""
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         ratings = self.rate()
         audit = self.store.read(AUDIT_TRAIL)
         sla_hours = SUSPENSION_POLICY["response_sla_hours"]
@@ -141,8 +177,11 @@ class Auditor:
                 result.breakglass.append(version)
 
         # 2. Suspend new dangerous (active) versions, within the rate limit.
-        dangerous = [v for v, r in ratings.items()
-                     if r.verdict == "dangerous" and self.registry.status_of(v) == "active"]
+        dangerous = [
+            v
+            for v, r in ratings.items()
+            if r.verdict == "dangerous" and self.registry.status_of(v) == "active"
+        ]
         headroom = max(0, max_per - self._recent_suspensions(audit, now, window_h))
         registered = {v for (_r, v) in self.registry.records()}
         for version in dangerous[:headroom]:
@@ -150,59 +189,80 @@ class Auditor:
                 # a version seen only in field activity must be registered first, or set_status has
                 # no record to update and the suspension would not stick (it would re-suspend forever).
                 self.registry.register(ratings[version].role, version)
-            self.registry.set_status(version, "suspended")   # the Optimizer now skips it
+            self.registry.set_status(version, "suspended")  # the Optimizer now skips it
             self._log("suspend", version, now, reason=list(ratings[version].reasons))
             result.suspended.append(version)
             if self._critical(ratings[version].role, version):
-                self._log("sla_open", version, now,
-                          deadline=(now + timedelta(hours=sla_hours)).isoformat())
+                self._log(
+                    "sla_open",
+                    version,
+                    now,
+                    deadline=(now + timedelta(hours=sla_hours)).isoformat(),
+                )
                 result.sla_opened.append(version)
-        for version in dangerous[headroom:]:   # rate-limited excess → escalate (no cascade), not suspend
+        for version in dangerous[
+            headroom:
+        ]:  # rate-limited excess → escalate (no cascade), not suspend
             self._log("escalate_unsuspended", version, now)
             result.escalated.append(version)
         return result
 
     def _log(self, stage: str, version: str, now: datetime, **extra) -> None:
-        self.store.append(AUDIT_TRAIL, "audit", AUDITOR_ACTOR,
-                          {"stage": stage, "version": version, "ts": now.isoformat(), **extra})
+        self.store.append(
+            AUDIT_TRAIL,
+            "audit",
+            AUDITOR_ACTOR,
+            {"stage": stage, "version": version, "ts": now.isoformat(), **extra},
+        )
 
     def _open_slas(self) -> dict:
         """version -> SLA deadline, for SLAs still open. An SLA closes on a recorded miss OR on
         reinstatement (a registry status→active for the version) — a human responding resolves it, so
         a later re-suspension can't trigger the stale old SLA. Folded in append order across trails."""
         sla_events = self.store.read(AUDIT_TRAIL)
-        reinstatements = [e for e in self.store.read(VERSIONS_FLOW)
-                          if e.payload.get("stage") == "status" and e.payload.get("status") == "active"]
+        reinstatements = [
+            e
+            for e in self.store.read(VERSIONS_FLOW)
+            if e.payload.get("stage") == "status" and e.payload.get("status") == "active"
+        ]
         out: dict = {}
         for e in sorted(sla_events + reinstatements, key=lambda ev: (ev.at, ev.seq)):
             p = e.payload
             if p.get("stage") == "sla_open":
                 out[p["version"]] = datetime.fromisoformat(p["deadline"])
-            elif p.get("stage") == "sla_missed" or (p.get("stage") == "status"
-                                                    and p.get("status") == "active"):
-                out.pop(p["version"], None)   # missed, or reinstated (resolved) → closed
+            elif p.get("stage") == "sla_missed" or (
+                p.get("stage") == "status" and p.get("status") == "active"
+            ):
+                out.pop(p["version"], None)  # missed, or reinstated (resolved) → closed
         return out
 
     @staticmethod
     def _recent_suspensions(audit, now: datetime, window_h: int) -> int:
         cutoff = now - timedelta(hours=window_h)
-        return sum(1 for e in audit if e.payload.get("stage") == "suspend"
-                   and datetime.fromisoformat(e.payload["ts"]) > cutoff)
+        return sum(
+            1
+            for e in audit
+            if e.payload.get("stage") == "suspend"
+            and datetime.fromisoformat(e.payload["ts"]) > cutoff
+        )
 
     def _critical(self, role: str, version: str) -> bool:
         """True when suspending `version` leaves its role with no other active version."""
-        return not any(v != version and self.registry.status_of(v) == "active"
-                       for (r, v) in self.registry.records() if r == role)
+        return not any(
+            v != version and self.registry.status_of(v) == "active"
+            for (r, v) in self.registry.records()
+            if r == role
+        )
 
     # -- helpers --------------------------------------------------------------
 
     def _role_of(self, version: str) -> str:
-        for (role, ver) in self.registry.records():
+        for role, ver in self.registry.records():
             if ver == version:
                 return role
-        return "Executor"   # only the Executor accrues field activity in the MVP
+        return "Executor"  # only the Executor accrues field activity in the MVP
 
-    def _predecessor(self, version: str, role: str) -> Optional[str]:
+    def _predecessor(self, version: str, role: str) -> str | None:
         ordered = [ver for (r, ver) in self.registry.records() if r == role]
         if version in ordered:
             i = ordered.index(version)
@@ -234,6 +294,9 @@ class Auditor:
     def _danger_flows(events) -> set:
         """Flows carrying a safety breach: an escalation (Steward quarantine / flow escalation) or a
         governance block."""
-        return {e.flow_id for e in events
-                if e.kind == "escalation"
-                or (e.kind == "governance" and e.payload.get("decision") == "block")}
+        return {
+            e.flow_id
+            for e in events
+            if e.kind == "escalation"
+            or (e.kind == "governance" and e.payload.get("decision") == "block")
+        }

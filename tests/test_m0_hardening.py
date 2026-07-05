@@ -31,8 +31,11 @@ GOV = PermissiveGovernance()
 def _action(kind: str, *, step: str = "open_pr", action_class: str = "CLASS_VISIBLE_OUTPUT"):
     key = make_idempotency_key("flow1", step, {"branch": "x"})
     return key, ActionDescriptor(
-        id="a1", action_class=action_class, effect_kind=kind,
-        idempotency_key=key, intent={"branch": "x"},
+        id="a1",
+        action_class=action_class,
+        effect_kind=kind,
+        idempotency_key=key,
+        intent={"branch": "x"},
     )
 
 
@@ -42,6 +45,7 @@ class _Deny:
 
 
 # --- action-Event wiring (the new behavior) ----------------------------------
+
 
 def test_perform_appends_one_action_event_on_completion():
     store = InMemoryEventStore()
@@ -105,6 +109,7 @@ def test_effect_is_not_completed_if_the_audit_event_fails():
 
 # --- governance pre-check (R6) -----------------------------------------------
 
+
 def test_blocked_action_does_not_execute_or_record():
     store = InMemoryEventStore()
     ledger = InMemoryEffectsLedger()
@@ -124,6 +129,7 @@ def test_blocked_action_does_not_execute_or_record():
 
 
 # --- failure semantics (§4.2 step 3) -----------------------------------------
+
 
 def test_failed_idempotent_retries_on_resume():
     ledger = InMemoryEffectsLedger()
@@ -171,6 +177,7 @@ def test_failed_irreversible_escalates_on_resume():
 
 # --- idempotency-key determinism (the pitfall the notes call out) ------------
 
+
 def test_idempotency_key_ignores_intent_insertion_order():
     k1 = make_idempotency_key("flow1", "s", {"a": 1, "b": 2})
     k2 = make_idempotency_key("flow1", "s", {"b": 2, "a": 1})
@@ -178,6 +185,7 @@ def test_idempotency_key_ignores_intent_insertion_order():
 
 
 # --- durable store atomicity guard -------------------------------------------
+
 
 def test_durable_append_rejects_duplicate_seq(tmp_path):
     store = DurableEventStore(tmp_path / "cell.db")
