@@ -149,7 +149,7 @@ ticket → verified PR, role by role, with the exact `observe` output of a real 
 
 The docs are authoritative — if code and a doc disagree, the doc wins (or the doc is amended first).
 
-1. [`Agentic-First-Enterprises.md`](docs/Agentic-First-Enterprises.md) — the model; the 11 design invariants are non-negotiable.
+1. [`Agentic-First-Enterprises.md`](docs/Agentic-First-Enterprises.md) — the model; the 11 design invariants are non-negotiable. (Pinned v1.5.0 snapshot; the canonical spec lives at [Agentic-First-Enterprises](https://github.com/MihaiCiprianChezan/Agentic-First-Enterprises).)
 2. [`One-Cell-Build-Plan.md`](docs/One-Cell-Build-Plan.md) — the build plan and milestone order (M0–M9; §6 lists the core M0–M7 sequence, with M8–M9 built past the MVP).
 3. [`Cell-Constitution.md`](docs/Cell-Constitution.md) — the constitution this cell runs under (Articles 1–10).
 4. [`Role-Contracts.md`](docs/Role-Contracts.md) — the five role interfaces.
