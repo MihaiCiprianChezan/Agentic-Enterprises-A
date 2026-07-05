@@ -10,6 +10,13 @@ never part of CI and is never run by automated agents.
 - The cell **verifies** it (runs the target's tests) and **opens the PR** through `perform()` —
   exactly-once, so a crash/resume never opens two PRs. The cell never merges (L0).
 
+## Intent sanitization
+Every subprocess call here is list-argv (never a shell), so the residual attack surface is
+argument-as-option injection — a branch like `--force` or a refspec like `main:main` arriving
+through an intent dict. `sanitize.py` validates branch names, repo paths, and text fields
+**at the effect site** (intents may be replayed from the durable ledger on resume, not only
+built by the caller). Hostile values raise `UnsafeIntent` before any process is spawned.
+
 ## Running the live slice (manual, opt-in)
 
 1. **Scaffold a sandbox repo** (disposable): a tiny Python package with one failing pytest test
