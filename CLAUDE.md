@@ -39,7 +39,8 @@ The whole one-cell build plan is **implemented, reviewed, and merged** (the full
 All milestones are done:
 
 - **M0** durable hash-chained event store + idempotent-action wrapper (exactly-once / at-most-once
-  across a kill-and-resume — the acceptance tests in `tests/test_m0_idempotency.py` pass).
+  across a kill-and-resume — the acceptance tests in `tests/test_m0_idempotency.py` and the
+  whole-cell gate in `tests/test_full_flow_kill_resume.py` pass).
 - **M1** ratified constitution · **M2** role contracts · **M3** observability (trace + cost) ·
   **M4** the handbrake · **M5** governance compiled R1–R12 · **M6** autonomy graduation ·
   **M7** the Steward · **M8** the Optimizer (capability/cost routing) · **M9** the Auditor
@@ -106,7 +107,12 @@ tests/                  # one or more suites per milestone (M0–M9) + cross-cut
 ```bash
 pip install -e ".[dev]"
 pytest            # the full suite is green (M0–M9 complete)
+ruff check src tests && ruff format --check src tests && mypy   # the CI quality gates
 ```
+
+CI enforces all three on every PR (`.github/workflows/test.yml`); keep them green before
+pushing. mypy is strict on `src/cell` (bare `dict`/`list` generics allowed — wire payloads
+are open dicts by design).
 
 ## Build order (executed in full)
 
